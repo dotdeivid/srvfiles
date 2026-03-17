@@ -1,0 +1,31 @@
+import os from 'os';
+
+// ─── Server ─────────────────────────────────────────────────────────
+export const PORT = parseInt(process.env.PORT || '3001', 10);
+export const HOST = '0.0.0.0';
+
+// ─── App ────────────────────────────────────────────────────────────
+export const APP_NAME = process.env.APP_NAME || 'SrvFiles';
+export const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT || '5173', 10);
+
+// ─── Files ──────────────────────────────────────────────────────────
+export const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB || '2048', 10);
+export const MAX_UPLOAD_COUNT = parseInt(process.env.MAX_UPLOAD_COUNT || '50', 10);
+
+// ─── Network ────────────────────────────────────────────────────────
+
+/**
+ * Returns the first non-internal IPv4 address (LAN IP).
+ * Falls back to 'localhost' if none found.
+ */
+export function getLanIp(): string {
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]!) {
+      if (net.family === 'IPv4' && !net.internal) {
+        return net.address;
+      }
+    }
+  }
+  return 'localhost';
+}
