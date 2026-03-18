@@ -1,17 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  getFiles,
-  uploadFiles,
-  deleteFile,
-  getStats,
-  getConfig,
-  type FileInfo,
-  type DiskStats,
-  type AppConfig,
-} from '../api/files.api';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createFilesApi, getApiUrl, type FileInfo, type DiskStats, type AppConfig } from '../api/files.api';
 
 // ─── Polling interval (ms) ──────────────────────────────────────────
-const POLL_INTERVAL = 5000; // Refresh file list every 5 seconds
+const POLL_INTERVAL = 5000;
 
 // ─── Hook return type ───────────────────────────────────────────────
 interface UseFilesReturn {
@@ -26,13 +17,20 @@ interface UseFilesReturn {
   fetchStats: () => Promise<void>;
   upload: (files: File[]) => Promise<boolean>;
   remove: (filename: string) => Promise<boolean>;
+  getDownloadUrl: (filename: string) => string;
 }
 
 /**
  * Custom hook that manages all file operations state.
+ * Accepts an optional serverUrl to talk to a specific server (remote or local).
  * Handles fetching, uploading, deleting, disk stats, and auto-polling.
  */
-export function useFiles(): UseFilesReturn {
+export function useFiles(serverUrl?: string): UseFilesReturn {
+  const api = useMemo(
+    () => createFilesApi(serverUrl || getApiUrl()),
+    [serverUrl]
+  );
+
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [stats, setStats] = useState<DiskStats | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -46,34 +44,34 @@ export function useFiles(): UseFilesReturn {
   const fetchFileList = useCallback(async () => {
     try {
       setError(null);
-      const data = await getFiles();
+      const data = await api.getFiles();
       setFiles(data.files);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch files';
       setError(message);
       console.error('Fetch files error:', err);
     }
-  }, []);
+  }, [api]);
 
   // ─── Fetch disk stats ──────────────────────────────────────────
   const fetchDiskStats = useCallback(async () => {
     try {
-      const data = await getStats();
+      const data = await api.getStats();
       setStats(data);
     } catch (err) {
       console.error('Fetch stats error:', err);
     }
-  }, []);
+  }, [api]);
 
-  // ─── Fetch config ─────────────────────────────────────────────
+  // ─── Fetch config ──────────────────────────────────────────────
   const fetchConfig = useCallback(async () => {
     try {
-      const data = await getConfig();
+      const data = await api.getConfig();
       setConfig(data);
     } catch (err) {
       console.error('Fetch config error:', err);
     }
-  }, []);
+  }, [api]);
 
   // ─── Upload files ──────────────────────────────────────────────
   const uploadFile = useCallback(async (filesToUpload: File[]): Promise<boolean> => {
@@ -82,11 +80,10 @@ export function useFiles(): UseFilesReturn {
       setUploadProgress(0);
       setError(null);
 
-      await uploadFiles(filesToUpload, (progress) => {
+      await api.uploadFiles(filesToUpload, (progress) => {
         setUploadProgress(progress);
       });
 
-      // Refresh list and stats after upload
       await Promise.all([fetchFileList(), fetchDiskStats()]);
       return true;
     } catch (err) {
@@ -98,15 +95,13 @@ export function useFiles(): UseFilesReturn {
       setUploading(false);
       setUploadProgress(0);
     }
-  }, [fetchFileList, fetchDiskStats]);
+  }, [api, fetchFileList, fetchDiskStats]);
 
   // ─── Delete file ───────────────────────────────────────────────
   const removeFile = useCallback(async (filename: string): Promise<boolean> => {
     try {
       setError(null);
-      await deleteFile(filename);
-
-      // Refresh list and stats after delete
+      await api.deleteFile(filename);
       await Promise.all([fetchFileList(), fetchDiskStats()]);
       return true;
     } catch (err) {
@@ -115,18 +110,21 @@ export function useFiles(): UseFilesReturn {
       console.error('Delete error:', err);
       return false;
     }
-  }, [fetchFileList, fetchDiskStats]);
+  }, [api, fetchFileList, fetchDiskStats]);
 
   // ─── Initial fetch + polling ───────────────────────────────────
   useEffect(() => {
+    setLoading(true);
+    setFiles([]);
+    setStats(null);
+    setConfig(null);
+
     const init = async () => {
-      setLoading(true);
       await Promise.all([fetchFileList(), fetchDiskStats(), fetchConfig()]);
       setLoading(false);
     };
     init();
 
-    // Auto-poll for file list updates (so other devices see changes)
     pollRef.current = setInterval(() => {
       fetchFileList();
       fetchDiskStats();
@@ -149,5 +147,6 @@ export function useFiles(): UseFilesReturn {
     fetchStats: fetchDiskStats,
     upload: uploadFile,
     remove: removeFile,
+    getDownloadUrl: api.getDownloadUrl,
   };
 }

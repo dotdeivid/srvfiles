@@ -4,13 +4,23 @@ interface ConfirmModalProps {
   message: string;
   onConfirm: () => void;
   onCancel: () => void;
+  confirmLabel?: string;
+  confirmVariant?: 'danger' | 'primary';
 }
 
 /**
  * In-app confirmation modal — replaces window.confirm().
  * Styled to match the dark theme.
  */
-export function ConfirmModal({ isOpen, title, message, onConfirm, onCancel }: ConfirmModalProps) {
+export function ConfirmModal({
+  isOpen,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  confirmLabel = 'Eliminar',
+  confirmVariant = 'danger',
+}: ConfirmModalProps) {
   if (!isOpen) return null;
 
   return (
@@ -26,8 +36,12 @@ export function ConfirmModal({ isOpen, title, message, onConfirm, onCancel }: Co
           <button className="btn btn--secondary" onClick={onCancel} id="confirm-cancel-btn">
             Cancelar
           </button>
-          <button className="btn btn--danger" onClick={onConfirm} id="confirm-delete-btn">
-            Eliminar
+          <button
+            className={`btn btn--${confirmVariant}`}
+            onClick={onConfirm}
+            id="confirm-action-btn"
+          >
+            {confirmLabel}
           </button>
         </div>
       </div>

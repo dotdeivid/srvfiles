@@ -1,6 +1,14 @@
 node_modules/
 dist/
 .env
+.env.local
 .DS_Store
+Thumbs.db
+*.log
+
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Rust / Tauri — build cache and compiled binaries (generated, never commit)
+src-tauri/target/
+src-tauri/binaries/

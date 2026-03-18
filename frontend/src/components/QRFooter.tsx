@@ -10,11 +10,14 @@ interface QRFooterProps {
  * Uses the backend's reported LAN IP so the QR works from any device.
  */
 export function QRFooter({ config }: QRFooterProps) {
-  // Build the LAN URL for the frontend using the server's private IP
+  // Build the LAN URL for the frontend using the server's private IP.
+  // In production builds (Tauri or npm start), the frontend is served by Express
+  // on the backend port (3001), so other devices should use that port.
+  // In dev mode, the Vite dev server runs on a separate port (5173).
   const getLanUrl = (): string => {
     if (config?.lanIp) {
-      const frontendPort = config.frontendPort || 5173;
-      return `http://${config.lanIp}:${frontendPort}`;
+      const port = import.meta.env.PROD ? config.port : (config.frontendPort || 5173);
+      return `http://${config.lanIp}:${port}`;
     }
     // Fallback: use current origin (works when already on the IP)
     return window.location.origin;

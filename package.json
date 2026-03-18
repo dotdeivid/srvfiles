@@ -7,9 +7,17 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
-    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+    "build": "cd frontend && npm run build",
+    "build:all": "cd frontend && npm run build && cd ../backend && npm run build",
+    "build:sidecar": "bash scripts/build-sidecar.sh",
+    "start": "cd backend && npm start",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2",
     "concurrently": "^9.1.2"
   }
 }

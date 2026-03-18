@@ -7,12 +7,14 @@ interface FileListProps {
   loading: boolean;
   onDelete: (filename: string) => Promise<boolean>;
   onRequestDelete: (filename: string) => void;
+  getDownloadUrl: (filename: string) => string;
+  canDelete: boolean;
 }
 
 /**
  * File listing component with search filter and list/grid toggle.
  */
-export function FileList({ files, loading, onDelete, onRequestDelete }: FileListProps) {
+export function FileList({ files, loading, onDelete, onRequestDelete, getDownloadUrl, canDelete }: FileListProps) {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [search, setSearch] = useState('');
 
@@ -126,7 +128,6 @@ export function FileList({ files, loading, onDelete, onRequestDelete }: FileList
               <tr>
                 <th>Nombre</th>
                 <th>Tamaño</th>
-                <th>Fecha</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -138,6 +139,8 @@ export function FileList({ files, loading, onDelete, onRequestDelete }: FileList
                   onDelete={onDelete}
                   onRequestDelete={onRequestDelete}
                   viewMode="list"
+                  getDownloadUrl={getDownloadUrl}
+                  canDelete={canDelete}
                 />
               ))}
             </tbody>
@@ -155,6 +158,8 @@ export function FileList({ files, loading, onDelete, onRequestDelete }: FileList
               onDelete={onDelete}
               onRequestDelete={onRequestDelete}
               viewMode="grid"
+              getDownloadUrl={getDownloadUrl}
+              canDelete={canDelete}
             />
           ))}
         </div>

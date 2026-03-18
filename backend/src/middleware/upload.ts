@@ -5,8 +5,9 @@ import { MAX_FILE_SIZE_MB } from '../config';
 import { sanitizeFilename } from '../utils/sanitize';
 
 // ─── Uploads directory ──────────────────────────────────────────────
-// Use project root /uploads, not relative to __dirname (which changes with tsx/ts-node)
-export const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
+// When running as Tauri sidecar, UPLOADS_DIR is passed via env var (set in lib.rs).
+// In dev mode, fall back to project-relative uploads/.
+export const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve(process.cwd(), 'uploads');
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {

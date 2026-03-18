@@ -8,12 +8,18 @@
     "build": "tsc",
     "start": "node dist/index.js"
   },
+  "pkg": {
+    "scripts": ["dist/**/*.js"],
+    "assets": ["../frontend/dist/**/*"],
+    "targets": []
+  },
   "dependencies": {
     "check-disk-space": "^3.4.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "mime-types": "^2.1.35",
-    "multer": "^1.4.5-lts.2"
+    "multer": "^1.4.5-lts.2",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -21,6 +27,8 @@
     "@types/mime-types": "^2.1.4",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.13.10",
+    "@types/ws": "^8.5.14",
+    "@yao-pkg/pkg": "^5.12.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.3"
   }

@@ -1,22 +1,20 @@
 import axios from 'axios';
 
-// ─── Base API configuration ────────────────────────────────────────
-// Use the same hostname + backend port to support LAN access.
-// When accessed from mobile via IP, the API calls will also use that IP.
-function getApiUrl(): string {
+// ─── Base API URL detection ────────────────────────────────────────
+// Exported so other modules (discovery.api, etc.) can use the local URL.
+export function getApiUrl(): string {
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl) return envUrl;
 
-  // Auto-detect: use current hostname with backend port
+  // Tauri 2 on macOS/Linux serves the WebView from tauri.localhost (no real port).
+  if (typeof window !== 'undefined' && window.location.hostname === 'tauri.localhost') {
+    return 'http://localhost:3001';
+  }
+
+  // Auto-detect: use current hostname with backend port (web mode + LAN access).
   const backendPort = import.meta.env.VITE_BACKEND_PORT || '3001';
   return `${window.location.protocol}//${window.location.hostname}:${backendPort}`;
 }
-
-const API_URL = getApiUrl();
-
-const api = axios.create({
-  baseURL: `${API_URL}/api/files`,
-});
 
 // ─── Types ──────────────────────────────────────────────────────────
 export interface FileInfo {
@@ -48,65 +46,54 @@ export interface AppConfig {
   lanUrl: string;
 }
 
-// ─── API Functions ──────────────────────────────────────────────────
+// ─── Factory ──────────────────────────────────────────────────────
+// Creates a set of API functions bound to a specific base URL.
+// Used by useFiles(serverUrl) to talk to a specific server.
+export function createFilesApi(baseUrl: string) {
+  const instance = axios.create({ baseURL: `${baseUrl}/api/files` });
 
-/**
- * Fetches the list of all uploaded files.
- */
-export async function getFiles(): Promise<{ files: FileInfo[]; count: number }> {
-  const { data } = await api.get('/');
-  return data;
-}
+  return {
+    getFiles: (): Promise<{ files: FileInfo[]; count: number }> =>
+      instance.get('/').then((r) => r.data),
 
-/**
- * Uploads one or multiple files with progress tracking.
- */
-export async function uploadFiles(
-  files: File[],
-  onProgress?: (progress: number) => void
-): Promise<{ message: string; files: UploadedFile[] }> {
-  const formData = new FormData();
-  files.forEach((file) => formData.append('files', file));
-
-  const { data } = await api.post('/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    onUploadProgress: (event) => {
-      if (event.total && onProgress) {
-        const percent = Math.round((event.loaded * 100) / event.total);
-        onProgress(percent);
-      }
+    uploadFiles: (
+      files: File[],
+      onProgress?: (progress: number) => void
+    ): Promise<{ message: string; files: UploadedFile[] }> => {
+      const formData = new FormData();
+      files.forEach((f) => formData.append('files', f));
+      return instance
+        .post('/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (event) => {
+            if (event.total && onProgress) {
+              onProgress(Math.round((event.loaded * 100) / event.total));
+            }
+          },
+        })
+        .then((r) => r.data);
     },
-  });
-  return data;
+
+    deleteFile: (filename: string): Promise<{ message: string }> =>
+      instance.delete(`/${encodeURIComponent(filename)}`).then((r) => r.data),
+
+    getStats: (): Promise<DiskStats> =>
+      instance.get('/stats').then((r) => r.data),
+
+    getConfig: (): Promise<AppConfig> =>
+      axios.get(`${baseUrl}/api/config`).then((r) => r.data),
+
+    getDownloadUrl: (filename: string): string =>
+      `${baseUrl}/api/files/download/${encodeURIComponent(filename)}`,
+  };
 }
 
-/**
- * Deletes a file by filename.
- */
-export async function deleteFile(filename: string): Promise<{ message: string }> {
-  const { data } = await api.delete(`/${encodeURIComponent(filename)}`);
-  return data;
-}
-
-/**
- * Fetches disk space statistics.
- */
-export async function getStats(): Promise<DiskStats> {
-  const { data } = await api.get('/stats');
-  return data;
-}
-
-/**
- * Fetches app configuration from backend (LAN IP, app name, etc.)
- */
-export async function getConfig(): Promise<AppConfig> {
-  const { data } = await axios.get(`${API_URL}/api/config`);
-  return data;
-}
-
-/**
- * Constructs the full download URL for a file.
- */
-export function getDownloadUrl(filename: string): string {
-  return `${API_URL}/api/files/download/${encodeURIComponent(filename)}`;
-}
+// ─── Default instance (uses auto-detected local URL) ──────────────
+// Kept for backward compatibility with any direct imports.
+const _default = createFilesApi(getApiUrl());
+export const getFiles = _default.getFiles;
+export const uploadFiles = _default.uploadFiles;
+export const deleteFile = _default.deleteFile;
+export const getStats = _default.getStats;
+export const getConfig = _default.getConfig;
+export const getDownloadUrl = _default.getDownloadUrl;
