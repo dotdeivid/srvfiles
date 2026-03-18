@@ -15,8 +15,10 @@ export const MAX_UPLOAD_COUNT = parseInt(process.env.MAX_UPLOAD_COUNT || '50', 1
 // ─── Network ────────────────────────────────────────────────────────
 
 /**
- * Returns the first non-internal IPv4 address (LAN IP).
- * Falls back to 'localhost' if none found.
+ * Iterates all network interfaces and returns the first non-internal IPv4 address.
+ * Typically corresponds to the machine's LAN IP (e.g. 192.168.x.x).
+ *
+ * @returns The LAN IPv4 address, or `'localhost'` if no external interface is found.
  */
 export function getLanIp(): string {
   const nets = os.networkInterfaces();

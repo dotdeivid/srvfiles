@@ -3,10 +3,18 @@ import * as filesService from '../services/files.service';
 
 /**
  * Controller layer for file endpoints.
- * Handles HTTP request/response — delegates business logic to the service.
+ * Handles HTTP request/response — delegates business logic to the service layer.
  */
 
-/** POST /api/files/upload */
+/**
+ * Handles `POST /api/files/upload`.
+ * Expects Multer to have already processed `req.files` before this handler runs.
+ * Responds with the list of uploaded files and their public download URLs.
+ *
+ * @param req - Express request. `req.files` must be an array of Multer file objects.
+ * @param res - Express response. Sends `200` with file metadata, `400` if no files
+ *              were provided, or `500` on an unexpected error.
+ */
 export function uploadFiles(req: Request, res: Response): void {
   try {
     const files = req.files as Express.Multer.File[];
@@ -28,7 +36,13 @@ export function uploadFiles(req: Request, res: Response): void {
   }
 }
 
-/** GET /api/files */
+/**
+ * Handles `GET /api/files`.
+ * Returns all files currently stored on the server, sorted newest first.
+ *
+ * @param _req - Express request (unused).
+ * @param res - Express response. Sends `200` with `{ files, count }`, or `500` on error.
+ */
 export function listFiles(_req: Request, res: Response): void {
   try {
     const files = filesService.listFiles();
@@ -39,7 +53,14 @@ export function listFiles(_req: Request, res: Response): void {
   }
 }
 
-/** GET /api/files/download/:filename */
+/**
+ * Handles `GET /api/files/download/:filename`.
+ * Streams the requested file to the client as an attachment.
+ *
+ * @param req - Express request. `req.params.filename` is the URL-decoded filename.
+ * @param res - Express response. Sends the file stream on success, `400` for an invalid
+ *              filename, `404` if not found, or `500` on a streaming error.
+ */
 export function downloadFile(req: Request, res: Response): void {
   try {
     const filename = req.params.filename as string;
@@ -71,7 +92,14 @@ export function downloadFile(req: Request, res: Response): void {
   }
 }
 
-/** DELETE /api/files/:filename */
+/**
+ * Handles `DELETE /api/files/:filename`.
+ * Permanently removes a file from the uploads directory.
+ *
+ * @param req - Express request. `req.params.filename` is the URL-decoded filename.
+ * @param res - Express response. Sends `200` on success, `400` for an invalid filename,
+ *              `404` if the file does not exist, or `500` on an unexpected error.
+ */
 export function deleteFile(req: Request, res: Response): void {
   try {
     const filename = req.params.filename as string;
@@ -96,7 +124,14 @@ export function deleteFile(req: Request, res: Response): void {
   }
 }
 
-/** GET /api/files/stats */
+/**
+ * Handles `GET /api/files/stats`.
+ * Returns disk usage statistics for the volume where uploads are stored.
+ *
+ * @param _req - Express request (unused).
+ * @param res - Express response. Sends `200` with `{ total, used, free }` in bytes,
+ *              or `500` on error.
+ */
 export async function getStats(_req: Request, res: Response): Promise<void> {
   try {
     const stats = await filesService.getDiskStats();

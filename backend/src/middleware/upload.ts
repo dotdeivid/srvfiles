@@ -17,8 +17,13 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 // ─── Filename conflict resolution ───────────────────────────────────
 
 /**
- * Resolves filename conflicts by appending a timestamp suffix.
- * Example: "photo.jpg" → "photo_1710640000000.jpg"
+ * Returns a non-colliding filename for the given destination path.
+ * If a file already exists at `filepath`, appends a Unix timestamp before the extension.
+ *
+ * @param filepath - The full absolute path where the file would be written.
+ * @param filename - The sanitized filename (without directory prefix).
+ * @returns The original `filename` if no conflict exists, or a suffixed variant
+ *          (e.g. `photo_1710640000000.jpg`) when a collision is detected.
  */
 function resolveConflict(filepath: string, filename: string): string {
   if (!fs.existsSync(filepath)) return filename;

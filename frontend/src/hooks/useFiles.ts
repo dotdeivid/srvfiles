@@ -21,9 +21,14 @@ interface UseFilesReturn {
 }
 
 /**
- * Custom hook that manages all file operations state.
- * Accepts an optional serverUrl to talk to a specific server (remote or local).
- * Handles fetching, uploading, deleting, disk stats, and auto-polling.
+ * Manages all file-related state for a given server URL.
+ *
+ * On mount, fetches the file list, disk stats, and app config in parallel.
+ * Then polls the file list and disk stats every {@link POLL_INTERVAL} ms.
+ * Re-initializes automatically whenever `serverUrl` changes.
+ *
+ * @param serverUrl - Optional backend base URL. Defaults to the auto-detected local URL.
+ * @returns An object containing file state, upload/delete actions, and polling controls.
  */
 export function useFiles(serverUrl?: string): UseFilesReturn {
   const api = useMemo(
@@ -41,6 +46,11 @@ export function useFiles(serverUrl?: string): UseFilesReturn {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ─── Fetch file list ────────────────────────────────────────────
+
+  /**
+   * Fetches the current file list from the server and updates state.
+   * Sets `error` on failure; clears it on success.
+   */
   const fetchFileList = useCallback(async () => {
     try {
       setError(null);
@@ -54,6 +64,11 @@ export function useFiles(serverUrl?: string): UseFilesReturn {
   }, [api]);
 
   // ─── Fetch disk stats ──────────────────────────────────────────
+
+  /**
+   * Fetches disk usage statistics and updates `stats` state.
+   * Errors are logged but not surfaced to the UI (non-critical).
+   */
   const fetchDiskStats = useCallback(async () => {
     try {
       const data = await api.getStats();
@@ -64,6 +79,11 @@ export function useFiles(serverUrl?: string): UseFilesReturn {
   }, [api]);
 
   // ─── Fetch config ──────────────────────────────────────────────
+
+  /**
+   * Fetches the server's runtime config (app name, LAN IP, ports) once on mount.
+   * Errors are logged but not surfaced to the UI.
+   */
   const fetchConfig = useCallback(async () => {
     try {
       const data = await api.getConfig();
@@ -74,6 +94,14 @@ export function useFiles(serverUrl?: string): UseFilesReturn {
   }, [api]);
 
   // ─── Upload files ──────────────────────────────────────────────
+
+  /**
+   * Uploads one or more files to the server, tracking progress.
+   * Refreshes the file list and disk stats on success.
+   *
+   * @param filesToUpload - Array of `File` objects to upload.
+   * @returns `true` if all files were uploaded successfully, `false` on error.
+   */
   const uploadFile = useCallback(async (filesToUpload: File[]): Promise<boolean> => {
     try {
       setUploading(true);
@@ -98,6 +126,14 @@ export function useFiles(serverUrl?: string): UseFilesReturn {
   }, [api, fetchFileList, fetchDiskStats]);
 
   // ─── Delete file ───────────────────────────────────────────────
+
+  /**
+   * Permanently deletes a file from the server by name.
+   * Refreshes the file list and disk stats on success.
+   *
+   * @param filename - The exact filename to delete.
+   * @returns `true` if the file was deleted, `false` on error.
+   */
   const removeFile = useCallback(async (filename: string): Promise<boolean> => {
     try {
       setError(null);

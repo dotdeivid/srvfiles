@@ -1,7 +1,18 @@
 import axios from 'axios';
 
 // ─── Base API URL detection ────────────────────────────────────────
-// Exported so other modules (discovery.api, etc.) can use the local URL.
+
+/**
+ * Resolves the base URL of the backend API at runtime.
+ *
+ * Priority order:
+ * 1. `VITE_API_URL` environment variable (explicit override).
+ * 2. `http://localhost:3001` when the hostname is `tauri.localhost`
+ *    (Tauri 2 webview on macOS/Linux uses this pseudo-hostname).
+ * 3. Current `window.location` protocol + hostname + `VITE_BACKEND_PORT` (default `3001`).
+ *
+ * @returns The backend base URL without a trailing slash.
+ */
 export function getApiUrl(): string {
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl) return envUrl;
@@ -17,6 +28,7 @@ export function getApiUrl(): string {
 }
 
 // ─── Types ──────────────────────────────────────────────────────────
+
 export interface FileInfo {
   name: string;
   size: number;
@@ -47,15 +59,35 @@ export interface AppConfig {
 }
 
 // ─── Factory ──────────────────────────────────────────────────────
-// Creates a set of API functions bound to a specific base URL.
-// Used by useFiles(serverUrl) to talk to a specific server.
+
+/**
+ * Creates a set of API functions bound to a specific backend base URL.
+ * Used by `useFiles(serverUrl)` to communicate with a chosen server instance
+ * (local or remote on the LAN).
+ *
+ * @param baseUrl - The backend base URL (e.g. `"http://192.168.1.10:3001"`).
+ * @returns An object containing all API methods scoped to `baseUrl`.
+ */
 export function createFilesApi(baseUrl: string) {
   const instance = axios.create({ baseURL: `${baseUrl}/api/files` });
 
   return {
+    /**
+     * Fetches the list of all uploaded files.
+     *
+     * @returns A promise resolving to `{ files, count }`.
+     */
     getFiles: (): Promise<{ files: FileInfo[]; count: number }> =>
       instance.get('/').then((r) => r.data),
 
+    /**
+     * Uploads one or more files using `multipart/form-data`.
+     * Optionally reports upload progress as a percentage (0–100).
+     *
+     * @param files - Array of `File` objects to upload.
+     * @param onProgress - Optional callback invoked with the current progress percentage.
+     * @returns A promise resolving to `{ message, files }` with the uploaded file metadata.
+     */
     uploadFiles: (
       files: File[],
       onProgress?: (progress: number) => void
@@ -74,15 +106,38 @@ export function createFilesApi(baseUrl: string) {
         .then((r) => r.data);
     },
 
+    /**
+     * Permanently deletes a file by name.
+     *
+     * @param filename - The exact filename to delete (will be URL-encoded internally).
+     * @returns A promise resolving to `{ message }` on success.
+     */
     deleteFile: (filename: string): Promise<{ message: string }> =>
       instance.delete(`/${encodeURIComponent(filename)}`).then((r) => r.data),
 
+    /**
+     * Fetches disk space statistics for the server's upload volume.
+     *
+     * @returns A promise resolving to `{ total, used, free }` in bytes.
+     */
     getStats: (): Promise<DiskStats> =>
       instance.get('/stats').then((r) => r.data),
 
+    /**
+     * Fetches the server's runtime configuration (app name, LAN IP, ports, etc.).
+     *
+     * @returns A promise resolving to {@link AppConfig}.
+     */
     getConfig: (): Promise<AppConfig> =>
       axios.get(`${baseUrl}/api/config`).then((r) => r.data),
 
+    /**
+     * Constructs the direct download URL for a given filename.
+     * This is a synchronous helper — no network request is made.
+     *
+     * @param filename - The exact filename as returned by the server.
+     * @returns The absolute download URL string.
+     */
     getDownloadUrl: (filename: string): string =>
       `${baseUrl}/api/files/download/${encodeURIComponent(filename)}`,
   };

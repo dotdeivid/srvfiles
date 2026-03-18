@@ -1,4 +1,18 @@
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Initializes and runs the Tauri application.
+///
+/// Registers the required plugins (shell, dialog, fs) and sets up the application
+/// via a `setup` closure. In release builds the closure spawns the bundled backend
+/// sidecar (`srvfiles-sidecar`) with `UPLOADS_DIR` pointing to the platform-specific
+/// app data directory. In debug builds (`tauri dev`) the backend is expected to be
+/// running separately via `npm run dev`, so the sidecar is not launched.
+///
+/// # Panics
+/// Panics if:
+/// - The app data directory cannot be resolved.
+/// - The sidecar binary is missing (run `npm run build:sidecar` first).
+/// - The sidecar fails to spawn.
+/// - The Tauri event loop encounters an unrecoverable error.
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

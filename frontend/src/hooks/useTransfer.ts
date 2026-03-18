@@ -16,6 +16,19 @@ export interface ActiveTransfer {
 
 // ─── Hook ─────────────────────────────────────────────────────────────
 
+/**
+ * Manages the WebSocket connection and state for direct peer-to-peer file transfers.
+ *
+ * Establishes a single WebSocket to the server relay on mount (or when `serverUrl` changes).
+ * The `appName` is intentionally kept in a ref so changing it does not cause a reconnect.
+ * Received file chunks are buffered in memory and assembled into a `Blob` on completion.
+ *
+ * @param serverUrl - The backend base URL (e.g. `"http://192.168.1.10:3001"`).
+ * @param appName - The display name shown to other connected clients.
+ * @param onFileReceived - Callback invoked when a complete file has been received.
+ *                         Receives the filename, MIME type, and the assembled `Blob`.
+ * @returns An object containing connection state and transfer control functions.
+ */
 export function useTransfer(
   serverUrl: string,
   appName: string,
@@ -112,12 +125,24 @@ export function useTransfer(
 
   // ─── Public API ──────────────────────────────────────────────────
 
-  /** Update the display name on the server without restarting the WS connection. */
+  /**
+   * Updates the device display name on the server without restarting the WebSocket connection.
+   *
+   * @param newName - The new display name to broadcast to other clients.
+   */
   const rename = useCallback((newName: string) => {
     appNameRef.current = newName;
     connRef.current?.rename(newName);
   }, []);
 
+  /**
+   * Initiates a file transfer to the given peer by sending a `send-request` to the server.
+   * Sets `activeTransfer` with `waiting: true` until the peer accepts or rejects.
+   *
+   * @param toClientId - The `clientId` of the intended recipient.
+   * @param file - The `File` object to send.
+   * @param peerName - The display name of the recipient (for UI feedback).
+   */
   const sendFileTo = useCallback((toClientId: string, file: File, peerName: string) => {
     const conn = connRef.current;
     if (!conn) return;
@@ -136,6 +161,11 @@ export function useTransfer(
     conn.sendRequest(toClientId, file, transferId);
   }, []);
 
+  /**
+   * Accepts the current `incomingRequest`, initializes a receive buffer,
+   * sets `activeTransfer` to track progress, and notifies the server.
+   * Clears `incomingRequest` afterwards.
+   */
   const acceptTransfer = useCallback(() => {
     const req = incomingRequest;
     const conn = connRef.current;
@@ -161,6 +191,10 @@ export function useTransfer(
     setIncomingRequest(null);
   }, [incomingRequest]);
 
+  /**
+   * Rejects the current `incomingRequest` and notifies the server.
+   * Clears `incomingRequest` afterwards.
+   */
   const rejectTransfer = useCallback(() => {
     const req = incomingRequest;
     const conn = connRef.current;
@@ -169,6 +203,10 @@ export function useTransfer(
     setIncomingRequest(null);
   }, [incomingRequest]);
 
+  /**
+   * Cancels the current `activeTransfer` (either sending or receiving).
+   * Cleans up the local receive buffer and pending send ref, then notifies the server.
+   */
   const cancelTransfer = useCallback(() => {
     const transfer = activeTransfer;
     const conn = connRef.current;
