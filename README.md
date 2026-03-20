@@ -151,9 +151,9 @@ Esto dispara el workflow en GitHub y al terminar encontrás los instaladores en 
 |------------|--------|----------------|
 | Linux (x86_64) | `ubuntu-22.04` | 1× |
 | Windows | `windows-latest` | 2× |
-| macOS (Apple Silicon) | *(comentado)* | 10× |
+| macOS (universal) | `macos-latest` | 10× |
 
-macOS está comentado para ahorrar minutos de CI. Para generar el `.dmg` de macOS, compilá localmente con `npm run tauri:build` desde una Mac.
+El target `universal-apple-darwin` genera un único `.dmg` que corre nativamente tanto en Intel como en Apple Silicon. El workflow instala ambos targets de Rust (`aarch64-apple-darwin` + `x86_64-apple-darwin`) automáticamente cuando la plataforma es macOS. Si querés ahorrar minutos de CI, podés comentar la entrada y compilar el `.dmg` manualmente con `npm run tauri:build` desde una Mac.
 
 ### Variables requeridas
 

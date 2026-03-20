@@ -5,6 +5,7 @@ dist/
 .DS_Store
 Thumbs.db
 *.log
+docs/
 
 backend/uploads/*
 !backend/uploads/.gitkeep
@@ -12,3 +13,9 @@ backend/uploads/*
 # Rust / Tauri — build cache and compiled binaries (generated, never commit)
 src-tauri/target/
 src-tauri/binaries/
+
+# Flutter
+mobile/
+
+# Claude
+.claude/

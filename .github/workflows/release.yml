@@ -21,10 +21,11 @@ jobs:
           # Windows cuesta 2x
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-          # macOS cuesta 10x — descomenta solo si necesitás .dmg automático
-          # Si compilás manualmente en tu Mac, podés dejarlo comentado
+          # macOS cuesta 10x por minuto de runner.
+          # Genera un universal binary (.dmg) que corre en Intel y Apple Silicon.
+          # Comentalo si preferís compilar el .dmg manualmente desde tu Mac.
           # - platform: macos-latest
-          #   target: aarch64-apple-darwin
+          #  target: universal-apple-darwin
 
     runs-on: ${{ matrix.platform }}
 
@@ -53,7 +54,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          # universal-apple-darwin requiere ambos targets instalados
+          targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
 
       # Cache de la compilación de Rust (ahorra ~5-10 min por build)
       - name: Cache Rust
