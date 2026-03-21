@@ -7,6 +7,7 @@ export interface TransferClient {
   appName: string;
   receiving: boolean;
   ip: string;
+  deviceType: 'mobile' | 'desktop';
 }
 
 export interface IncomingTransferRequest {

@@ -63,7 +63,10 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel }: Direc
       <span className="direct-row__dot" />
 
       <div className="direct-row__info">
-        <span className="direct-row__name">{client.appName}</span>
+        <span className="direct-row__name">
+          <span className="direct-row__device-icon">{client.deviceType === 'mobile' ? '📱' : '🖥'}</span>
+          {client.appName}
+        </span>
         <span className="direct-row__ip">{client.ip}</span>
       </div>
 

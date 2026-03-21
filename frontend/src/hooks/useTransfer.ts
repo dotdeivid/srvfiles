@@ -32,7 +32,8 @@ export interface ActiveTransfer {
 export function useTransfer(
   serverUrl: string,
   appName: string,
-  onFileReceived: (fileName: string, mimeType: string, blob: Blob) => void
+  onFileReceived: (fileName: string, mimeType: string, blob: Blob) => void,
+  onSendRejected?: () => void
 ) {
   const connRef = useRef<TransferConnection | null>(null);
   const pendingSendRef = useRef<{ transferId: string; file: File; peerId: string } | null>(null);
@@ -42,6 +43,8 @@ export function useTransfer(
   // Keep latest callbacks in refs so changing them doesn't restart the WS connection
   const onFileReceivedRef = useRef(onFileReceived);
   useEffect(() => { onFileReceivedRef.current = onFileReceived; });
+  const onSendRejectedRef = useRef(onSendRejected);
+  useEffect(() => { onSendRejectedRef.current = onSendRejected; });
   const appNameRef = useRef(appName);
   useEffect(() => { appNameRef.current = appName; });
 
@@ -56,7 +59,10 @@ export function useTransfer(
     const conn = new TransferConnection(serverUrl);
     connRef.current = conn;
 
-    conn.ws.onopen = () => conn.register(appNameRef.current);
+    conn.ws.onopen = () => {
+      conn.register(appNameRef.current);
+      conn.setReceiving(true);
+    };
 
     conn.on('welcome', (msg) => setMyClientId(msg.clientId));
 
@@ -80,6 +86,7 @@ export function useTransfer(
       if (pendingSendRef.current?.transferId === msg.transferId) {
         pendingSendRef.current = null;
         setActiveTransfer(null);
+        onSendRejectedRef.current?.();
       }
     });
 

@@ -1504,12 +1504,20 @@ body::before {
 }
 
 .direct-row__name {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   font-size: 0.88rem;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.direct-row__device-icon {
+  font-size: 0.9rem;
+  line-height: 1;
 }
 
 .direct-row__ip {

@@ -10,6 +10,7 @@ interface ConnectedClient {
   appName: string;
   receiving: boolean;
   ip: string;
+  deviceType: 'mobile' | 'desktop';
 }
 
 interface TransferSession {
@@ -40,6 +41,7 @@ function broadcastClients() {
     appName: c.appName,
     receiving: c.receiving,
     ip: c.ip,
+    deviceType: c.deviceType,
   }));
   const data = JSON.stringify({ type: 'clients', clients: list });
   for (const client of clients.values()) {
@@ -78,7 +80,7 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
 
     switch (msg.type) {
       case 'hello': {
-        client = { ws, clientId, appName: msg.appName || 'Unknown', receiving: false, ip: clientIp };
+        client = { ws, clientId, appName: msg.appName || 'Unknown', receiving: false, ip: clientIp, deviceType: msg.deviceType === 'mobile' ? 'mobile' : 'desktop' };
         clients.set(clientId, client);
         send(ws, { type: 'welcome', clientId });
         broadcastClients();

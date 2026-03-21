@@ -113,7 +113,9 @@ function FileApp({ serverUrl }: FileAppProps) {
     rejectTransfer,
     cancelTransfer,
     rename,
-  } = useTransfer(serverUrl, deviceName, handleFileReceived);
+  } = useTransfer(serverUrl, deviceName, handleFileReceived, () => {
+    toast.error('El destinatario rechazó el envío');
+  });
 
   const handleSaveName = useCallback(
     (name: string) => {
@@ -297,7 +299,7 @@ function FileApp({ serverUrl }: FileAppProps) {
           onDelete={remove}
           onRequestDelete={handleRequestDelete}
           getDownloadUrl={getDownloadUrl}
-          canDelete={isTauriApp()}
+          canDelete={true}
         />
       </main>
 

@@ -1,23 +1,39 @@
 # SrvFiles
 
-Aplicación de escritorio y web para compartir archivos entre dispositivos en la misma red local. No requiere internet, no requiere cuenta, no requiere configuración.
+Sistema completo para compartir archivos entre dispositivos en la misma red local. No requiere internet, no requiere cuenta, no requiere configuración.
 
 ## ¿Qué hace?
 
-Levantás SrvFiles en una computadora y todos los dispositivos de la red pueden conectarse para subir, descargar y transferir archivos directamente entre sí.
+Levantás SrvFiles en una computadora y todos los dispositivos de la red — otros PCs, celulares, tablets — pueden conectarse para subir, descargar y transferir archivos directamente entre sí.
 
-**Capacidades:**
+**Capacidades del servidor / app de escritorio:**
 
 - **Subida de archivos** — drag & drop, clic para explorar, múltiples archivos simultáneos, hasta 2 GB por archivo
 - **Descarga directa** — link directo desde la lista; los archivos recibidos vía P2P se guardan automáticamente en `~/Downloads/SrvFiles/`
 - **Lista de archivos** — búsqueda en tiempo real, vista lista y grilla, ícono por tipo de archivo
-- **Eliminación** — solo disponible desde la app de escritorio (quien corre el servidor)
+- **Eliminación** — borrar archivos del servidor desde la misma UI
 - **Espacio en disco** — indicador visual de uso en tiempo real
 - **QR de acceso** — código QR en el footer para conectar el celular sin tipear la IP
-- **Transferencia P2P directa** — enviá archivos de dispositivo a dispositivo sin pasar por disco. Se usa relay WebSocket a través del servidor; no requiere conexión directa entre pares
-- **Detección automática** — la app encuentra servidores SrvFiles en la red local al iniciar, sin configuración manual
-- **Nombre de dispositivo** — cada cliente puede identificarse con un nombre visible para los demás al momento de enviar archivos
+- **Transferencia P2P directa** — enviá archivos de dispositivo a dispositivo sin pasar por disco, via relay WebSocket
+- **Detección automática** — la app encuentra servidores SrvFiles en la red local al iniciar
+- **Nombre de dispositivo** — cada cliente puede identificarse con un nombre visible para los demás
 - **App de escritorio nativa** — empaquetada con Tauri 2: instaladores nativos para macOS, Windows y Linux
+- **Tipo de dispositivo** — cada peer se identifica como 📱 móvil o 🖥 escritorio en la lista de conectados
+
+---
+
+## Ecosistema
+
+SrvFiles está compuesto por cuatro componentes que comparten el mismo protocolo WebSocket para P2P:
+
+| Componente | Descripción | Repo |
+|------------|-------------|------|
+| **Backend** | Servidor Express + WebSocket (Node.js) | este repo |
+| **Frontend web** | Cliente React/Vite — accesible desde cualquier navegador | este repo |
+| **Desktop (Tauri)** | App nativa macOS/Windows/Linux — levanta el servidor automáticamente | este repo |
+| **Mobile (Flutter)** | Cliente Android — se conecta al servidor o funciona en modo P2P puro | [srvfiles-mobile](https://github.com/tu-usuario/srvfiles-mobile) |
+
+La app mobile puede conectarse al servidor de escritorio para explorar y descargar archivos, o funcionar de forma completamente autónoma levantando un relay embebido para transferencias phone-to-phone.
 
 ---
 
@@ -153,7 +169,7 @@ Esto dispara el workflow en GitHub y al terminar encontrás los instaladores en 
 | Windows | `windows-latest` | 2× |
 | macOS (universal) | `macos-latest` | 10× |
 
-El target `universal-apple-darwin` genera un único `.dmg` que corre nativamente tanto en Intel como en Apple Silicon. El workflow instala ambos targets de Rust (`aarch64-apple-darwin` + `x86_64-apple-darwin`) automáticamente cuando la plataforma es macOS. Si querés ahorrar minutos de CI, podés comentar la entrada y compilar el `.dmg` manualmente con `npm run tauri:build` desde una Mac.
+El target `universal-apple-darwin` genera un único `.dmg` que corre nativamente tanto en Intel como en Apple Silicon. Si querés ahorrar minutos de CI, podés comentar la entrada y compilar el `.dmg` manualmente con `npm run tauri:build` desde una Mac.
 
 ### Variables requeridas
 
@@ -187,7 +203,7 @@ srvfiles/
 │   └── src/
 │       ├── App.tsx                 # Componente raíz, layout y modales
 │       ├── api/
-│       │   ├── files.api.ts        # Cliente HTTP (axios)
+│       │   ├── files.api.ts        # Cliente HTTP
 │       │   ├── discovery.api.ts    # Cliente de descubrimiento de red
 │       │   └── transfer.api.ts     # Cliente WebSocket P2P
 │       ├── components/
@@ -228,6 +244,8 @@ srvfiles/
 └── package.json                    # Scripts del monorepo
 ```
 
+La app mobile tiene su propio repositorio con estructura independiente. Ver [srvfiles-mobile](https://github.com/tu-usuario/srvfiles-mobile).
+
 ---
 
 ## Variables de entorno
@@ -256,7 +274,7 @@ srvfiles/
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `GET` | `/api/health` | Health check — responde `{ status: "ok", app: "SrvFiles" }` |
+| `GET` | `/api/health` | Health check — `{ status: "ok", app: "SrvFiles" }` |
 | `GET` | `/api/config` | Configuración: IP, puertos, nombre, límites |
 | `GET` | `/api/files` | Lista todos los archivos subidos |
 | `POST` | `/api/files/upload` | Sube uno o múltiples archivos (multipart/form-data, campo `files`) |
@@ -266,6 +284,23 @@ srvfiles/
 | `GET` | `/api/discovery/scan` | Escanea la red local buscando otros servidores SrvFiles |
 | `WS` | `/ws` | WebSocket para transferencias P2P (señalización JSON + relay binario) |
 
+### Protocolo WebSocket (P2P)
+
+Todos los clientes (web, desktop, mobile) usan el mismo protocolo:
+
+| Mensaje | Dirección | Descripción |
+|---------|-----------|-------------|
+| `hello` | cliente → relay | Registro con `appName` y `deviceType` (`mobile` \| `desktop`) |
+| `welcome` | relay → cliente | Confirmación con `clientId` asignado |
+| `clients` | relay → todos | Lista actualizada de peers conectados |
+| `set-receiving` | cliente → relay | Marca al cliente como disponible para recibir |
+| `send-request` | cliente → relay → peer | Solicitud de transferencia |
+| `send-accept` | peer → relay → cliente | Aceptación |
+| `send-reject` | peer → relay → cliente | Rechazo (notifica al emisor con alerta roja) |
+| `send-cancel` | cualquiera → relay → otro | Cancelación |
+| `send-complete` | sender → relay → receiver | Fin de la transferencia |
+| `[binario]` | sender → relay → receiver | Chunk de archivo (prefijado con 36 bytes del transferId) |
+
 ---
 
 ## Seguridad
@@ -274,7 +309,7 @@ srvfiles/
 - **Límite de tamaño**: configurable, por defecto 2 GB por archivo
 - **Sin autenticación**: diseñado para uso en red privada de confianza
 - **CORS permisivo**: necesario para acceso LAN desde distintos orígenes
-- **Eliminación restringida**: el botón de borrar solo aparece en la app de escritorio Tauri (quien ejecuta el servidor)
+- **Eliminación**: disponible tanto desde la app de escritorio como desde el navegador
 
 ---
 
@@ -285,6 +320,7 @@ srvfiles/
 | Backend | Node.js · Express · TypeScript · ws · Multer |
 | Frontend | React · Vite · TypeScript · react-dropzone · sonner · qrcode.react |
 | Desktop | Tauri 2 (Rust) · tauri-plugin-fs · tauri-plugin-dialog |
+| Mobile | Flutter · Dart · dart:io WebSocket relay embebido |
 | Estilos | Vanilla CSS — tema oscuro, glassmorphism |
 | Empaquetado | @yao-pkg/pkg (sidecar backend) |
-| CI/CD | GitHub Actions · tauri-apps/tauri-action |
+| CI/CD | GitHub Actions · tauri-apps/tauri-action · subosito/flutter-action |
