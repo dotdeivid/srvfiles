@@ -4,18 +4,13 @@ import { getFileIcon } from '../utils/fileIcons';
 
 interface FileItemProps {
   file: FileInfo;
-  onDelete: (filename: string) => Promise<boolean>;
   onRequestDelete: (filename: string) => void;
   viewMode: 'list' | 'grid';
   getDownloadUrl: (filename: string) => string;
   canDelete: boolean;
 }
 
-/**
- * Individual file entry — renders as either a table row (list view) or a card (grid view).
- * Pure presentation component — no business logic.
- */
-export function FileItem({ file, onDelete: _onDelete, onRequestDelete, viewMode, getDownloadUrl, canDelete }: FileItemProps) {
+export function FileItem({ file, onRequestDelete, viewMode, getDownloadUrl, canDelete }: FileItemProps) {
   const downloadUrl = getDownloadUrl(file.name);
 
   const handleDelete = () => onRequestDelete(file.name);

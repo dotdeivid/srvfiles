@@ -36,29 +36,6 @@ function App() {
 function ConnectingScreen() {
   return (
     <div className="connecting-screen">
-      <div className="connecting-screen__logo">
-        <svg width="48" height="48" viewBox="0 0 100 100" fill="none">
-          <defs>
-            <linearGradient id="logo-gradient-splash" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#6366f1" />
-              <stop offset="100%" stopColor="#8b5cf6" />
-            </linearGradient>
-          </defs>
-          <rect width="100" height="100" rx="22" fill="#0f0f1a" />
-          <path
-            d="M30 25h40c2.8 0 5 2.2 5 5v40c0 2.8-2.2 5-5 5H30c-2.8 0-5-2.2-5-5V30c0-2.8 2.2-5 5-5z"
-            stroke="url(#logo-gradient-splash)"
-            strokeWidth="3"
-            fill="none"
-          />
-          <path
-            d="M35 45h30M35 55h20"
-            stroke="url(#logo-gradient-splash)"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
       <div className="connecting-screen__spinner" />
       <p className="connecting-screen__text">Buscando servidor...</p>
     </div>
@@ -169,16 +146,8 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
   // URL del backend con IP LAN real (para mostrar en el modal, evita "localhost")
   const backendLanUrl = config?.lanIp ? `http://${config.lanIp}:${config.port}` : serverUrl;
 
-  const copyWebUrl = () => {
-    if (!webUrl) return;
-    navigator.clipboard
-      .writeText(webUrl)
-      .then(() => toast.success('URL copiada al portapapeles'))
-      .catch(() => toast.error('No se pudo copiar'));
-  };
-
   return (
-    <div className={`app ${isTauriApp() ? 'app--tauri' : ''}`}>
+    <>
       <Toaster
         position="top-right"
         theme="dark"
@@ -226,32 +195,9 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
         onCancel={handleCancelDelete}
       />
 
-      {/* Header */}
+      {/* Header — fuera del contenedor max-width para ocupar 100% natural */}
       <header className="header" id="app-header">
         <div className="header__left">
-          <div className="header__logo">
-            <svg width="32" height="32" viewBox="0 0 100 100" fill="none">
-              <defs>
-                <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#6366f1" />
-                  <stop offset="100%" stopColor="#8b5cf6" />
-                </linearGradient>
-              </defs>
-              <rect width="100" height="100" rx="22" fill="#0f0f1a" />
-              <path
-                d="M30 25h40c2.8 0 5 2.2 5 5v40c0 2.8-2.2 5-5 5H30c-2.8 0-5-2.2-5-5V30c0-2.8 2.2-5 5-5z"
-                stroke="url(#logo-gradient)"
-                strokeWidth="3"
-                fill="none"
-              />
-              <path
-                d="M35 45h30M35 55h20"
-                stroke="url(#logo-gradient)"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
           <div className="header__text">
             <h1 className="header__title">{appName}</h1>
           </div>
@@ -284,46 +230,47 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="main">
-        {error && (
-          <div className="error-banner" id="error-banner">
-            <span>⚠️ {error}</span>
+      <div className={`app ${isTauriApp() ? 'app--tauri' : ''}`}>
+        {/* Main content */}
+        <main className="main">
+          {error && (
+            <div className="error-banner" id="error-banner">
+              <span>⚠️ {error}</span>
+            </div>
+          )}
+
+          <DropZone
+            onUpload={upload}
+            uploading={uploading}
+            uploadProgress={uploadProgress}
+          />
+
+          {/* Direct transfer — animates open when other devices are connected */}
+          <div className={`clients-wrap ${otherClients.length > 0 ? 'clients-wrap--open' : ''}`}>
+            <div className="clients-wrap__inner">
+              <OnlineClients
+                clients={onlineClients}
+                myClientId={myClientId}
+                activeTransfer={activeTransfer}
+                onSendFile={sendFileTo}
+                onCancelTransfer={cancelTransfer}
+                onViewServer={(url) => { onConnect(url); }}
+              />
+            </div>
           </div>
-        )}
 
-        <DropZone
-          onUpload={upload}
-          uploading={uploading}
-          uploadProgress={uploadProgress}
-        />
+          <FileList
+            files={files}
+            loading={loading}
+            onRequestDelete={handleRequestDelete}
+            getDownloadUrl={getDownloadUrl}
+            canDelete={true}
+          />
+        </main>
 
-        {/* Direct transfer — animates open when other devices are connected */}
-        <div className={`clients-wrap ${otherClients.length > 0 ? 'clients-wrap--open' : ''}`}>
-          <div className="clients-wrap__inner">
-            <OnlineClients
-              clients={onlineClients}
-              myClientId={myClientId}
-              activeTransfer={activeTransfer}
-              onSendFile={sendFileTo}
-              onCancelTransfer={cancelTransfer}
-              onViewServer={(url) => { onConnect(url); }}
-            />
-          </div>
-        </div>
-
-        <FileList
-          files={files}
-          loading={loading}
-          onDelete={remove}
-          onRequestDelete={handleRequestDelete}
-          getDownloadUrl={getDownloadUrl}
-          canDelete={true}
-        />
-      </main>
-
-      <QRFooter config={config} />
-    </div>
+        <QRFooter config={config} />
+      </div>
+    </>
   );
 }
 

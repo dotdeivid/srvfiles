@@ -5,16 +5,12 @@ import type { FileInfo } from '../api/files.api';
 interface FileListProps {
   files: FileInfo[];
   loading: boolean;
-  onDelete: (filename: string) => Promise<boolean>;
   onRequestDelete: (filename: string) => void;
   getDownloadUrl: (filename: string) => string;
   canDelete: boolean;
 }
 
-/**
- * File listing component with search filter and list/grid toggle.
- */
-export function FileList({ files, loading, onDelete, onRequestDelete, getDownloadUrl, canDelete }: FileListProps) {
+export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canDelete }: FileListProps) {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [search, setSearch] = useState('');
 
@@ -136,7 +132,6 @@ export function FileList({ files, loading, onDelete, onRequestDelete, getDownloa
                 <FileItem
                   key={file.name}
                   file={file}
-                  onDelete={onDelete}
                   onRequestDelete={onRequestDelete}
                   viewMode="list"
                   getDownloadUrl={getDownloadUrl}
@@ -155,7 +150,6 @@ export function FileList({ files, loading, onDelete, onRequestDelete, getDownloa
             <FileItem
               key={file.name}
               file={file}
-              onDelete={onDelete}
               onRequestDelete={onRequestDelete}
               viewMode="grid"
               getDownloadUrl={getDownloadUrl}

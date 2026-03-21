@@ -35,26 +35,9 @@ function isLocalContext(): boolean {
   );
 }
 
-/**
- * Manages server connection with automatic discovery on mount.
- *
- * - **Local / Tauri context**: scans the LAN for SrvFiles instances
- *   (retrying up to 6 × 500 ms while the local sidecar warms up) and
- *   auto-connects to the first found server, or falls back to `localhost:3001`.
- * - **Remote browser context** (e.g. `http://192.168.x.y:5173`): skips the
- *   scan and connects directly to the URL visible in `window.location`.
- *
- * @returns An object with:
- *   - `serverUrl` — the active backend URL, or `null` while connecting.
- *   - `connecting` — `true` during the initial discovery phase.
- *   - `availableServers` — list of all servers found during the last scan.
- *   - `connect(url)` — manually switches the active server.
- *   - `rescan()` — re-scans the network and updates `availableServers`.
- */
 export function useMode() {
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(true);
-  const [availableServers, setAvailableServers] = useState<DiscoveredServer[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,7 +74,6 @@ export function useMode() {
 
       if (cancelled) return;
 
-      setAvailableServers(servers);
       setServerUrl(normalize(servers.length > 0 ? servers[0].url : LOCALHOST));
       setConnecting(false);
     }
@@ -109,17 +91,9 @@ export function useMode() {
     setServerUrl(normalize(url));
   }, []);
 
-  /**
-   * Re-scans the local network for SrvFiles instances and updates `availableServers`.
-   * Does not change the currently active server URL.
-   *
-   * @returns A promise resolving to the updated list of discovered servers.
-   */
   const rescan = useCallback(async () => {
-    const servers = await scanNetwork().catch(() => [] as DiscoveredServer[]);
-    setAvailableServers(servers);
-    return servers;
+    return scanNetwork().catch(() => [] as DiscoveredServer[]);
   }, []);
 
-  return { serverUrl, connecting, availableServers, connect, rescan };
+  return { serverUrl, connecting, connect, rescan };
 }
