@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { TransferConnection, type TransferClient, type IncomingTransferRequest } from '../api/transfer.api';
+import { isTauriApp } from './useDownloadDir';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ export function useTransfer(
     connRef.current = conn;
 
     conn.ws.onopen = () => {
-      conn.register(appNameRef.current);
+      conn.register(appNameRef.current, isTauriApp());
       conn.setReceiving(true);
     };
 

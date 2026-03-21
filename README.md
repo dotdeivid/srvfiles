@@ -13,12 +13,14 @@ Levantás SrvFiles en una computadora y todos los dispositivos de la red — otr
 - **Lista de archivos** — búsqueda en tiempo real, vista lista y grilla, ícono por tipo de archivo
 - **Eliminación** — borrar archivos del servidor desde la misma UI
 - **Espacio en disco** — indicador visual de uso en tiempo real
-- **QR de acceso** — código QR en el footer para conectar el celular sin tipear la IP
+- **QR de acceso** — código QR en el footer para conectar el celular sin tipear la IP; incluye copyright al pie
 - **Transferencia P2P directa** — enviá archivos de dispositivo a dispositivo sin pasar por disco, via relay WebSocket
 - **Detección automática** — la app encuentra servidores SrvFiles en la red local al iniciar
 - **Nombre de dispositivo** — cada cliente puede identificarse con un nombre visible para los demás
 - **App de escritorio nativa** — empaquetada con Tauri 2: instaladores nativos para macOS, Windows y Linux
-- **Tipo de dispositivo** — cada peer se identifica como 📱 móvil o 🖥 escritorio en la lista de conectados
+- **Modo servidor Tauri** — cualquier instancia Tauri actúa simultáneamente como servidor y cliente; se anuncia con `isServer: true` en el relay y recibe un badge "servidor" en la lista de peers
+- **Cambio de servidor** — modal con lista de servidores disponibles en la red (combinando relay + escaneo LAN, sin duplicados), campo de IP manual y botón de copia de URL
+- **Tipo de dispositivo** — cada peer se identifica con su icono: 🖥️ servidor Tauri, 🌐 navegador web, 📱 móvil; los servidores muestran además un botón "Ver" para navegar a sus archivos
 
 ---
 
@@ -31,7 +33,7 @@ SrvFiles está compuesto por cuatro componentes que comparten el mismo protocolo
 | **Backend** | Servidor Express + WebSocket (Node.js) | este repo |
 | **Frontend web** | Cliente React/Vite — accesible desde cualquier navegador | este repo |
 | **Desktop (Tauri)** | App nativa macOS/Windows/Linux — levanta el servidor automáticamente | este repo |
-| **Mobile (Flutter)** | Cliente Android — se conecta al servidor o funciona en modo P2P puro | [srvfiles-mobile](https://github.com/tu-usuario/srvfiles-mobile) |
+| **Mobile (Flutter)** | Cliente Android — se conecta al servidor o funciona en modo P2P puro | [srvfiles-mobile](https://github.com/dotdeivid/srvfiles-mobile) |
 
 La app mobile puede conectarse al servidor de escritorio para explorar y descargar archivos, o funcionar de forma completamente autónoma levantando un relay embebido para transferencias phone-to-phone.
 
@@ -211,11 +213,12 @@ srvfiles/
 │       │   ├── FileList.tsx        # Lista/grilla con búsqueda y toggle de vista
 │       │   ├── FileItem.tsx        # Fila o card de archivo individual
 │       │   ├── DiskStats.tsx       # Indicador de espacio en disco
-│       │   ├── QRFooter.tsx        # QR de acceso LAN
+│       │   ├── QRFooter.tsx        # QR de acceso LAN + copyright al pie
 │       │   ├── ConfirmModal.tsx    # Dialog de confirmación genérico
 │       │   ├── NameModal.tsx       # Modal de nombre de dispositivo (primer arranque)
 │       │   ├── IncomingTransferModal.tsx # Solicitud de transferencia entrante
-│       │   └── OnlineClients.tsx   # Lista de peers conectados + botón de envío
+│       │   ├── OnlineClients.tsx   # Lista de peers (con badge servidor y botón "Ver")
+│       │   └── ServerSwitcherModal.tsx  # Modal de cambio de servidor (relay + scan LAN)
 │       ├── hooks/
 │       │   ├── useFiles.ts         # Estado de archivos + polling automático
 │       │   ├── useMode.ts          # Auto-conexión y descubrimiento de servidor
@@ -244,7 +247,7 @@ srvfiles/
 └── package.json                    # Scripts del monorepo
 ```
 
-La app mobile tiene su propio repositorio con estructura independiente. Ver [srvfiles-mobile](https://github.com/tu-usuario/srvfiles-mobile).
+La app mobile tiene su propio repositorio con estructura independiente. Ver [srvfiles-mobile](https://github.com/dotdeivid/srvfiles-mobile).
 
 ---
 
@@ -290,10 +293,11 @@ Todos los clientes (web, desktop, mobile) usan el mismo protocolo:
 
 | Mensaje | Dirección | Descripción |
 |---------|-----------|-------------|
-| `hello` | cliente → relay | Registro con `appName` y `deviceType` (`mobile` \| `desktop`) |
+| `hello` | cliente → relay | Registro con `appName`, `deviceType` (`mobile` \| `desktop`) e `isServer: boolean` |
 | `welcome` | relay → cliente | Confirmación con `clientId` asignado |
-| `clients` | relay → todos | Lista actualizada de peers conectados |
+| `clients` | relay → todos | Lista actualizada de peers conectados (incluye `isServer` por peer) |
 | `set-receiving` | cliente → relay | Marca al cliente como disponible para recibir |
+| `rename` | cliente → relay | Cambia el nombre visible del cliente sin reconectar |
 | `send-request` | cliente → relay → peer | Solicitud de transferencia |
 | `send-accept` | peer → relay → cliente | Aceptación |
 | `send-reject` | peer → relay → cliente | Rechazo (notifica al emisor con alerta roja) |

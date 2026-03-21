@@ -9,6 +9,7 @@ interface OnlineClientsProps {
   activeTransfer: ActiveTransfer | null;
   onSendFile: (toClientId: string, file: File, peerName: string) => void;
   onCancelTransfer: () => void;
+  onViewServer?: (serverUrl: string) => void;
 }
 
 /** Renders the list of other connected devices inside any container (e.g. a modal). */
@@ -18,6 +19,7 @@ export function OnlineClients({
   activeTransfer,
   onSendFile,
   onCancelTransfer,
+  onViewServer,
 }: OnlineClientsProps) {
   const others = clients.filter((c) => c.clientId !== myClientId);
 
@@ -38,6 +40,7 @@ export function OnlineClients({
           activeTransfer={activeTransfer}
           onSendFile={onSendFile}
           onCancel={onCancelTransfer}
+          onViewServer={onViewServer}
         />
       ))}
     </div>
@@ -51,12 +54,20 @@ interface DirectClientRowProps {
   activeTransfer: ActiveTransfer | null;
   onSendFile: (toClientId: string, file: File, peerName: string) => void;
   onCancel: () => void;
+  onViewServer?: (serverUrl: string) => void;
 }
 
-function DirectClientRow({ client, activeTransfer, onSendFile, onCancel }: DirectClientRowProps) {
+function DirectClientRow({ client, activeTransfer, onSendFile, onCancel, onViewServer }: DirectClientRowProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const isThisRow = activeTransfer?.peerId === client.clientId;
   const isOtherRow = !!activeTransfer && !isThisRow;
+
+  // Determine device icon: server (Tauri) → 🖥️, mobile → 📱, browser → 🌐
+  const deviceIcon =
+    client.deviceType === 'mobile' ? '📱' :
+    client.isServer ? '🖥️' : '🌐';
+
+  const serverUrl = `http://${client.ip}:3001`;
 
   return (
     <div className={`direct-row ${isThisRow ? 'direct-row--active' : ''}`}>
@@ -64,8 +75,13 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel }: Direc
 
       <div className="direct-row__info">
         <span className="direct-row__name">
-          <span className="direct-row__device-icon">{client.deviceType === 'mobile' ? '📱' : '🖥'}</span>
+          <span className="direct-row__device-icon">{deviceIcon}</span>
           {client.appName}
+          {client.isServer && (
+            <span className="direct-row__server-badge" title="Servidor SrvFiles (Tauri)">
+              servidor
+            </span>
+          )}
         </span>
         <span className="direct-row__ip">{client.ip}</span>
       </div>
@@ -95,7 +111,20 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel }: Direc
           </button>
         </div>
       ) : (
-        <>
+        <div className="direct-row__actions">
+          {client.isServer && onViewServer && (
+            <button
+              className="btn btn--ghost btn--sm direct-row__view"
+              onClick={() => onViewServer(serverUrl)}
+              disabled={isOtherRow}
+              title={`Ver archivos de ${client.appName}`}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              Ver
+            </button>
+          )}
           <input
             ref={inputRef}
             type="file"
@@ -127,7 +156,7 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel }: Direc
             </svg>
             Enviar
           </button>
-        </>
+        </div>
       )}
     </div>
   );

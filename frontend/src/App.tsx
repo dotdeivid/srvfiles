@@ -13,10 +13,11 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { OnlineClients } from './components/OnlineClients';
 import { IncomingTransferModal } from './components/IncomingTransferModal';
 import { NameModal } from './components/NameModal';
+import { ServerSwitcherModal } from './components/ServerSwitcherModal';
 
 // ─── Root: handles auto-connect + splash ──────────────────────────
 function App() {
-  const { serverUrl, connecting, availableServers, connect } = useMode();
+  const { serverUrl, connecting, connect, rescan } = useMode();
 
   if (connecting) {
     return <ConnectingScreen />;
@@ -25,8 +26,8 @@ function App() {
   return (
     <FileApp
       serverUrl={serverUrl!}
-      availableServers={availableServers}
       onConnect={connect}
+      onRescan={rescan}
     />
   );
 }
@@ -67,11 +68,11 @@ function ConnectingScreen() {
 // ─── Main file UI ──────────────────────────────────────────────────
 interface FileAppProps {
   serverUrl: string;
-  availableServers: unknown[];
   onConnect: (url: string) => void;
+  onRescan: () => Promise<import('./api/discovery.api').DiscoveredServer[]>;
 }
 
-function FileApp({ serverUrl }: FileAppProps) {
+function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
   const {
     files,
     stats,
@@ -133,6 +134,10 @@ function FileApp({ serverUrl }: FileAppProps) {
 
   const otherClients = onlineClients.filter((c) => c.clientId !== myClientId);
 
+  // ─── Server switcher modal ────────────────────────────────────
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const serverClients = onlineClients.filter((c) => c.isServer && c.clientId !== myClientId);
+
   // ─── Confirm delete modal ─────────────────────────────────────
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -161,6 +166,8 @@ function FileApp({ serverUrl }: FileAppProps) {
 
   // ─── Web URL chip ─────────────────────────────────────────────
   const webUrl = config?.lanIp ? `http://${config.lanIp}:${config.frontendPort}` : null;
+  // URL del backend con IP LAN real (para mostrar en el modal, evita "localhost")
+  const backendLanUrl = config?.lanIp ? `http://${config.lanIp}:${config.port}` : serverUrl;
 
   const copyWebUrl = () => {
     if (!webUrl) return;
@@ -197,6 +204,17 @@ function FileApp({ serverUrl }: FileAppProps) {
         request={incomingRequest}
         onAccept={acceptTransfer}
         onReject={handleRejectTransfer}
+      />
+
+      {/* Server switcher */}
+      <ServerSwitcherModal
+        isOpen={switcherOpen}
+        onClose={() => setSwitcherOpen(false)}
+        currentServerUrl={backendLanUrl}
+        copyUrl={webUrl ?? serverUrl}
+        serverClients={serverClients}
+        onConnect={onConnect}
+        onRescan={onRescan}
       />
 
       {/* Confirm delete modal */}
@@ -239,26 +257,26 @@ function FileApp({ serverUrl }: FileAppProps) {
           </div>
         </div>
 
-        {/* Center: server IP chip — centered on desktop, stacked on mobile */}
+        {/* Center: IP chip — abre el server switcher */}
         <div className="header__center">
-          {webUrl && (
-            <button
-              className="web-url-chip"
-              onClick={copyWebUrl}
-              title="Copiar URL para acceder desde el navegador"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="2" y1="12" x2="22" y2="12" />
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-              </svg>
-              <span>{webUrl.replace('http://', '')}</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-            </button>
-          )}
+          <button
+            className="server-switcher-chip"
+            onClick={() => setSwitcherOpen(true)}
+            title="Ver y cambiar servidor SrvFiles"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+            <span>{(webUrl ?? serverUrl).replace('http://', '')}</span>
+            {serverClients.length > 0 && (
+              <span className="server-switcher-chip__count">{serverClients.length}</span>
+            )}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
         </div>
 
         <div className="header__right">
@@ -289,6 +307,7 @@ function FileApp({ serverUrl }: FileAppProps) {
               activeTransfer={activeTransfer}
               onSendFile={sendFileTo}
               onCancelTransfer={cancelTransfer}
+              onViewServer={(url) => { onConnect(url); }}
             />
           </div>
         </div>

@@ -8,6 +8,7 @@ export interface TransferClient {
   receiving: boolean;
   ip: string;
   deviceType: 'mobile' | 'desktop';
+  isServer: boolean;
 }
 
 export interface IncomingTransferRequest {
@@ -134,8 +135,8 @@ export class TransferConnection {
    *
    * @param appName - The display name shown to other connected clients.
    */
-  register(appName: string) {
-    this.sendJson({ type: 'hello', appName });
+  register(appName: string, isServer = false) {
+    this.sendJson({ type: 'hello', appName, deviceType: 'desktop', isServer });
   }
 
   /**

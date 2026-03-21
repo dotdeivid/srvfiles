@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { scanNetwork, type DiscoveredServer } from '../api/discovery.api';
 import { getApiUrl } from '../api/files.api';
+import { isTauriApp } from './useDownloadDir';
 
 const LOCALHOST = 'http://localhost:3001';
 
@@ -59,6 +60,15 @@ export function useMode() {
     let cancelled = false;
 
     async function autoConnect() {
+      // Tauri: always its own server — no scan needed
+      if (isTauriApp()) {
+        if (!cancelled) {
+          setServerUrl(LOCALHOST);
+          setConnecting(false);
+        }
+        return;
+      }
+
       // Browser accessing a remote server: already there, skip scan
       if (!isLocalContext()) {
         if (!cancelled) {
@@ -68,8 +78,7 @@ export function useMode() {
         return;
       }
 
-      // Tauri / localhost: scan for other SrvFiles instances.
-      // Retry up to 6 × 500 ms = 3 s while the local sidecar warms up.
+      // localhost in browser (dev mode): scan to find the backend
       let servers: DiscoveredServer[] = [];
       for (let attempt = 0; attempt < 6; attempt++) {
         try {

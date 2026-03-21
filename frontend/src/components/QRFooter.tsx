@@ -41,6 +41,12 @@ export function QRFooter({ config }: QRFooterProps) {
           />
         </div>
         <code className="qr-footer__url">{lanUrl}</code>
+        <p className="qr-footer__copyright">
+          © 2026 Carlos David Sandoval ·{' '}
+          <a href="https://github.com/dotdeivid" target="_blank" rel="noopener noreferrer">
+            github.com/dotdeivid
+          </a>
+        </p>
       </div>
     </footer>
   );
