@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'srvfiles-device-name';
+const STORAGE_KEY = import.meta.env.VITE_STORAGE_KEY ?? 'srvfiles-device-name';
 
 const ADJECTIVES = ['Rápido', 'Azul', 'Verde', 'Veloz', 'Brillante', 'Tranquilo', 'Creativo', 'Curioso'];
 const ANIMALS    = ['Zorro', 'Puma', 'Delfín', 'Águila', 'Jaguar', 'Lobo', 'Oso', 'Cóndor'];

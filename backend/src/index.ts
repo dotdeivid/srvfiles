@@ -4,10 +4,11 @@ import cors from 'cors';
 import path from 'path';
 import { WebSocketServer } from 'ws';
 import filesRouter from './routes/files.route';
-import { PORT, HOST, APP_NAME, MAX_FILE_SIZE_MB, FRONTEND_PORT, getLanIp } from './config';
-import { scanNetwork } from './services/discovery.service';
+import healthRouter from './routes/health.route';
+import configRouter from './routes/config.route';
+import discoveryRouter from './routes/discovery.route';
+import { PORT, HOST, getLanIp } from './config';
 import { handleConnection } from './services/transfer.service';
-import type { AppConfig } from './types';
 
 // ─── Express app setup ──────────────────────────────────────────────
 const app = express();
@@ -18,28 +19,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // ─── API Routes ─────────────────────────────────────────────────────
 app.use('/api/files', filesRouter);
-
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', app: 'SrvFiles', appName: APP_NAME, timestamp: new Date().toISOString() });
-});
-
-app.get('/api/discovery/scan', async (_req, res) => {
-  const servers = await scanNetwork();
-  res.json(servers);
-});
-
-app.get('/api/config', (_req, res) => {
-  const lanIp = getLanIp();
-  const config: AppConfig = {
-    appName: APP_NAME,
-    lanIp,
-    port: PORT,
-    frontendPort: FRONTEND_PORT,
-    maxFileSizeMb: MAX_FILE_SIZE_MB,
-    lanUrl: `http://${lanIp}`,
-  };
-  res.json(config);
-});
+app.use('/api/health', healthRouter);
+app.use('/api/config', configRouter);
+app.use('/api/discovery', discoveryRouter);
 
 // ─── Serve frontend static files (production) ──────────────────────
 // When running as pkg binary (Tauri sidecar), frontend/dist is embedded in the

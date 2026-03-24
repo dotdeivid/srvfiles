@@ -1,5 +1,5 @@
 /** Subfolder created inside the system Downloads directory. */
-const SUBFOLDER = 'SrvFiles';
+const SUBFOLDER = import.meta.env.VITE_SUBFOLDER ?? 'SrvFiles';
 
 /**
  * Detects whether the app is running inside a Tauri webview by checking

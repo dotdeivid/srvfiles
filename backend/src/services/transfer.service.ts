@@ -30,12 +30,25 @@ const transfers = new Map<string, TransferSession>();
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
+/**
+ * Sends a JSON-serialized message to a single WebSocket client.
+ * Silently drops the send if the socket is not in OPEN state.
+ *
+ * @param ws  - The target WebSocket connection.
+ * @param msg - Any object; will be serialized with `JSON.stringify`.
+ */
 function send(ws: WebSocket, msg: object) {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(msg));
   }
 }
 
+/**
+ * Broadcasts the current client roster to every connected peer.
+ * Called after any state change that affects the visible client list:
+ * new connection (`hello`), disconnection (`close`), receiving-mode
+ * toggle (`set-receiving`), or a rename (`rename`).
+ */
 function broadcastClients() {
   const list = Array.from(clients.values()).map((c) => ({
     clientId: c.clientId,
@@ -55,6 +68,28 @@ function broadcastClients() {
 
 // ─── Connection handler ──────────────────────────────────────────────
 
+/**
+ * Entry point for every new WebSocket connection on `/ws`.
+ * Registered directly with `wss.on('connection', handleConnection)`.
+ *
+ * Lifecycle:
+ * 1. Assigns a UUID `clientId` and resolves the client's IP (maps loopback → LAN IP).
+ * 2. Waits for a `hello` message to register the client in the in-memory registry.
+ * 3. Routes subsequent JSON messages through a switch dispatcher:
+ *    - `set-receiving` — toggles the client's availability for incoming transfers.
+ *    - `rename`        — updates the client's display name without reconnecting.
+ *    - `send-request`  — forwards a transfer request to the target peer; rejects if offline.
+ *    - `send-accept`   — notifies the sender that the receiver accepted.
+ *    - `send-reject`   — notifies the sender that the receiver rejected; cleans up the session.
+ *    - `send-cancel`   — notifies the other party of cancellation; cleans up the session.
+ *    - `send-complete` — notifies the receiver that all chunks have been sent; cleans up the session.
+ * 4. Relays binary frames (file chunks) directly to the receiver identified by the
+ *    36-byte `transferId` prefix embedded in each frame.
+ * 5. On socket close, removes the client from the registry and re-broadcasts the roster.
+ *
+ * @param ws  - The newly opened WebSocket connection.
+ * @param req - The underlying HTTP upgrade request, used to extract the client's IP.
+ */
 export function handleConnection(ws: WebSocket, req: IncomingMessage) {
   const clientId = crypto.randomUUID();
   const rawIp = (req.socket.remoteAddress || '').replace('::ffff:', '');
