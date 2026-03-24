@@ -100,6 +100,7 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
       saveName(name);
       const trimmed = name.trim();
       if (trimmed) rename(trimmed);
+      setRenameOpen(false);
     },
     [saveName, rename]
   );
@@ -110,6 +111,9 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
   }, [rejectTransfer]);
 
   const otherClients = onlineClients.filter((c) => c.clientId !== myClientId);
+
+  // ─── Rename modal ─────────────────────────────────────────────
+  const [renameOpen, setRenameOpen] = useState(false);
 
   // ─── Server switcher modal ────────────────────────────────────
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -161,9 +165,9 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
         }}
       />
 
-      {/* First-launch: ask user for a device name */}
+      {/* First-launch or manual rename */}
       <NameModal
-        isOpen={showNameModal}
+        isOpen={showNameModal || renameOpen}
         defaultName={deviceName}
         onSave={handleSaveName}
       />
@@ -203,7 +207,7 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
           </div>
         </div>
 
-        {/* Center: IP chip — abre el server switcher */}
+        {/* Center: IP chip + device name — abre el server switcher / rename */}
         <div className="header__center">
           <button
             className="server-switcher-chip"
@@ -222,6 +226,17 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9" />
             </svg>
+          </button>
+          <button
+            className="device-name-chip"
+            onClick={() => setRenameOpen(true)}
+            title="Cambiar nombre del dispositivo"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+            </svg>
+            <span>{deviceName}</span>
           </button>
         </div>
 

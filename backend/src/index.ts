@@ -7,7 +7,7 @@ import filesRouter from './routes/files.route';
 import healthRouter from './routes/health.route';
 import configRouter from './routes/config.route';
 import discoveryRouter from './routes/discovery.route';
-import { PORT, HOST, getLanIp } from './config';
+import { PORT, HOST, getLanIp, APP_NAME, MAX_FILE_SIZE_MB } from './config';
 import { handleConnection } from './services/transfer.service';
 
 // ─── Express app setup ──────────────────────────────────────────────

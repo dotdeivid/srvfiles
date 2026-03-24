@@ -29,7 +29,6 @@ export function QRFooter({ config }: QRFooterProps) {
     <footer className="qr-footer" id="qr-footer">
       <div className="qr-footer__content">
         <h3 className="qr-footer__title">Accedé desde tu celular</h3>
-        <p className="qr-footer__subtitle">Escaneá el código QR para abrir la app</p>
         <div className="qr-footer__code">
           <QRCodeSVG
             value={lanUrl}
