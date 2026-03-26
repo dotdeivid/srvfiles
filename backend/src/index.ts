@@ -7,8 +7,10 @@ import filesRouter from './routes/files.route';
 import healthRouter from './routes/health.route';
 import configRouter from './routes/config.route';
 import discoveryRouter from './routes/discovery.route';
+import authRouter from './routes/auth.route';
 import { PORT, HOST, getLanIp, APP_NAME, MAX_FILE_SIZE_MB } from './config';
 import { handleConnection } from './services/transfer.service';
+import { generatePin, getPin, requireAuth, resetAuth } from './middleware/auth';
 
 // ─── Express app setup ──────────────────────────────────────────────
 const app = express();
@@ -18,10 +20,25 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ─── API Routes ─────────────────────────────────────────────────────
-app.use('/api/files', filesRouter);
+// /api/health and /api/auth are public — no PIN required
 app.use('/api/health', healthRouter);
-app.use('/api/config', configRouter);
-app.use('/api/discovery', discoveryRouter);
+app.use('/api/auth', authRouter);
+
+// /api/pin — returns the plain-text PIN, but ONLY to localhost connections.
+// Used by the web UI (served from the same origin) to auto-authenticate on startup.
+app.get('/api/pin', (req, res) => {
+  const ip = (req.socket.remoteAddress ?? '').replace('::ffff:', '');
+  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '';
+  if (!isLocal) { res.status(403).json({ error: 'Forbidden' }); return; }
+  const pin = getPin();
+  if (!pin) { res.status(503).json({ error: 'Server not ready' }); return; }
+  res.json({ pin });
+});
+
+// All other /api/* routes require a valid session token
+app.use('/api/files', requireAuth, filesRouter);
+app.use('/api/config', requireAuth, configRouter);
+app.use('/api/discovery', requireAuth, discoveryRouter);
 
 // ─── Serve frontend static files (production) ──────────────────────
 // When running as pkg binary (Tauri sidecar), frontend/dist is embedded in the
@@ -53,12 +70,19 @@ wss.on('connection', handleConnection);
 
 server.listen(PORT, HOST, () => {
   const lanIp = getLanIp();
+  const pin = generatePin();
 
   console.log(`\n🗂️  ${APP_NAME} running!`);
   console.log(`   Local:   http://localhost:${PORT}`);
   console.log(`   Network: http://${lanIp}:${PORT}`);
   console.log(`   Max file size: ${MAX_FILE_SIZE_MB} MB`);
+  // Special format for Tauri IPC to parse the PIN
+  console.log(`   PIN: ${pin}`);
   console.log('');
 });
+
+// ─── Cleanup on shutdown ─────────────────────────────────────────────
+process.on('SIGTERM', () => { resetAuth(); process.exit(0); });
+process.on('SIGINT',  () => { resetAuth(); process.exit(0); });
 
 export default app;

@@ -10,6 +10,7 @@ interface OnlineClientsProps {
   onSendFile: (toClientId: string, file: File, peerName: string) => void;
   onCancelTransfer: () => void;
   onViewServer?: (serverUrl: string) => void;
+  currentServerUrl?: string;
 }
 
 /** Renders the list of other connected devices inside any container (e.g. a modal). */
@@ -20,6 +21,7 @@ export function OnlineClients({
   onSendFile,
   onCancelTransfer,
   onViewServer,
+  currentServerUrl,
 }: OnlineClientsProps) {
   const others = clients.filter((c) => c.clientId !== myClientId);
 
@@ -31,6 +33,9 @@ export function OnlineClients({
     );
   }
 
+  // Extract current server IP for comparison
+  const currentServerIp = currentServerUrl?.replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+
   return (
     <div className="online-clients__list">
       {others.map((client) => (
@@ -41,6 +46,7 @@ export function OnlineClients({
           onSendFile={onSendFile}
           onCancel={onCancelTransfer}
           onViewServer={onViewServer}
+          isCurrentServer={client.isServer && client.ip === currentServerIp}
         />
       ))}
     </div>
@@ -55,9 +61,10 @@ interface DirectClientRowProps {
   onSendFile: (toClientId: string, file: File, peerName: string) => void;
   onCancel: () => void;
   onViewServer?: (serverUrl: string) => void;
+  isCurrentServer?: boolean;
 }
 
-function DirectClientRow({ client, activeTransfer, onSendFile, onCancel, onViewServer }: DirectClientRowProps) {
+function DirectClientRow({ client, activeTransfer, onSendFile, onCancel, onViewServer, isCurrentServer }: DirectClientRowProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const isThisRow = activeTransfer?.peerId === client.clientId;
   const isOtherRow = !!activeTransfer && !isThisRow;
@@ -112,7 +119,7 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel, onViewS
         </div>
       ) : (
         <div className="direct-row__actions">
-          {client.isServer && onViewServer && (
+          {client.isServer && onViewServer && !isCurrentServer && (
             <button
               className="btn btn--ghost btn--sm direct-row__view"
               onClick={() => onViewServer(serverUrl)}

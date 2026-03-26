@@ -1,8 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createFilesApi, getApiUrl, type FileInfo, type DiskStats, type AppConfig } from '../api/files.api';
-
-// ─── Polling interval (ms) ──────────────────────────────────────────
-const POLL_INTERVAL = 5000;
 
 // ─── Hook return type ───────────────────────────────────────────────
 interface UseFilesReturn {
@@ -30,9 +27,9 @@ interface UseFilesReturn {
  * @param serverUrl - Optional backend base URL. Defaults to the auto-detected local URL.
  * @returns An object containing file state, upload/delete actions, and polling controls.
  */
-export function useFiles(serverUrl?: string): UseFilesReturn {
+export function useFiles(serverUrl?: string | null): UseFilesReturn {
   const api = useMemo(
-    () => createFilesApi(serverUrl || getApiUrl()),
+    () => createFilesApi(serverUrl ?? getApiUrl()),
     [serverUrl]
   );
 
@@ -43,7 +40,6 @@ export function useFiles(serverUrl?: string): UseFilesReturn {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ─── Fetch file list ────────────────────────────────────────────
 
@@ -148,8 +144,14 @@ export function useFiles(serverUrl?: string): UseFilesReturn {
     }
   }, [api, fetchFileList, fetchDiskStats]);
 
-  // ─── Initial fetch + polling ───────────────────────────────────
+  // ─── Initial fetch ─────────────────────────────────────────────
   useEffect(() => {
+    // serverUrl === null means paused (e.g. PIN dialog is open) — do nothing
+    if (serverUrl === null) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setFiles([]);
     setStats(null);
@@ -160,16 +162,7 @@ export function useFiles(serverUrl?: string): UseFilesReturn {
       setLoading(false);
     };
     init();
-
-    pollRef.current = setInterval(() => {
-      fetchFileList();
-      fetchDiskStats();
-    }, POLL_INTERVAL);
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [fetchFileList, fetchDiskStats, fetchConfig]);
+  }, [serverUrl, fetchFileList, fetchDiskStats, fetchConfig]);
 
   return {
     files,

@@ -1,9 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Toaster, toast } from 'sonner';
 import { useFiles } from './hooks/useFiles';
 import { useMode } from './hooks/useMode';
 import { useTransfer } from './hooks/useTransfer';
 import { useDeviceName } from './hooks/useDeviceName';
+import { useAuth } from './hooks/useAuth';
 import { saveReceivedFile, isTauriApp } from './hooks/useDownloadDir';
 import { DropZone } from './components/DropZone';
 import { FileList } from './components/FileList';
@@ -14,6 +15,7 @@ import { OnlineClients } from './components/OnlineClients';
 import { IncomingTransferModal } from './components/IncomingTransferModal';
 import { NameModal } from './components/NameModal';
 import { ServerSwitcherModal } from './components/ServerSwitcherModal';
+import { PinDialog } from './components/PinDialog';
 
 // ─── Root: handles auto-connect + splash ──────────────────────────
 function App() {
@@ -50,6 +52,8 @@ interface FileAppProps {
 }
 
 function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
+  const { authenticated, pinDialogOpen, pinError, serverPin, submitPin } = useAuth(serverUrl);
+
   const {
     files,
     stats,
@@ -61,7 +65,9 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
     upload,
     remove,
     getDownloadUrl,
-  } = useFiles(serverUrl);
+    fetchFiles,
+    fetchStats,
+  } = useFiles(authenticated && !pinDialogOpen ? serverUrl : null);
 
   const appName = config?.appName || import.meta.env.VITE_APP_NAME || 'SrvFiles';
 
@@ -69,6 +75,11 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
   const { deviceName, showNameModal, saveName } = useDeviceName();
 
   // ─── Direct transfer ──────────────────────────────────────────
+  const handleFilesChanged = useCallback(() => {
+    fetchFiles();
+    fetchStats();
+  }, [fetchFiles, fetchStats]);
+
   const handleFileReceived = useCallback(
     async (fileName: string, _mimeType: string, blob: Blob) => {
       const savedPath = await saveReceivedFile(fileName, blob);
@@ -93,7 +104,7 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
     rename,
   } = useTransfer(serverUrl, deviceName, handleFileReceived, () => {
     toast.error('El destinatario rechazó el envío');
-  });
+  }, authenticated, handleFilesChanged);
 
   const handleSaveName = useCallback(
     (name: string) => {
@@ -146,9 +157,17 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
   }, []);
 
   // ─── Web URL chip ─────────────────────────────────────────────
-  const webUrl = config?.lanIp ? `http://${config.lanIp}:${config.frontendPort}` : null;
+  const webUrl = config?.lanIp ? `http://${config.lanIp}:${config.frontendPort ?? config.port}` : null;
   // URL del backend con IP LAN real (para mostrar en el modal, evita "localhost")
   const backendLanUrl = config?.lanIp ? `http://${config.lanIp}:${config.port}` : serverUrl;
+
+  // Track local LAN IP — persists even after switching to a remote server
+  const localLanIpRef = useRef<string | null>(null);
+  useEffect(() => {
+    if ((serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1')) && config?.lanIp) {
+      localLanIpRef.current = config.lanIp;
+    }
+  }, [serverUrl, config?.lanIp]);
 
   return (
     <>
@@ -163,6 +182,14 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
             backdropFilter: 'blur(12px)',
           },
         }}
+      />
+
+      {/* PIN authentication dialog — shown for remote servers or if auto-auth fails */}
+      <PinDialog
+        isOpen={pinDialogOpen}
+        serverUrl={backendLanUrl}
+        error={pinError}
+        onSubmit={submitPin}
       />
 
       {/* First-launch or manual rename */}
@@ -186,6 +213,7 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
         currentServerUrl={backendLanUrl}
         copyUrl={webUrl ?? serverUrl}
         serverClients={serverClients}
+        localLanIp={localLanIpRef.current}
         onConnect={onConnect}
         onRescan={onRescan}
       />
@@ -215,18 +243,26 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
             title="Ver y cambiar servidor SrvFiles"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+              <line x1="6" y1="6" x2="6.01" y2="6" />
+              <line x1="6" y1="18" x2="6.01" y2="18" />
             </svg>
-            <span>{(webUrl ?? serverUrl).replace('http://', '')}</span>
-            {serverClients.length > 0 && (
-              <span className="server-switcher-chip__count">{serverClients.length}</span>
+            <span>Servidor</span>
+            {serverPin && (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <span>{serverPin}</span>
+              </>
             )}
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
+
           <button
             className="device-name-chip"
             onClick={() => setRenameOpen(true)}
@@ -270,6 +306,7 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
                 onSendFile={sendFileTo}
                 onCancelTransfer={cancelTransfer}
                 onViewServer={(url) => { onConnect(url); }}
+                currentServerUrl={backendLanUrl}
               />
             </div>
           </div>

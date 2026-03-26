@@ -1,6 +1,8 @@
+import { toast } from 'sonner';
 import type { FileInfo } from '../api/files.api';
 import { formatBytes } from '../utils/format';
 import { getFileIcon } from '../utils/fileIcons';
+import { isTauriApp, saveReceivedFile } from '../hooks/useDownloadDir';
 
 interface FileItemProps {
   file: FileInfo;
@@ -15,6 +17,21 @@ export function FileItem({ file, onRequestDelete, viewMode, getDownloadUrl, canD
 
   const handleDelete = () => onRequestDelete(file.name);
 
+  const handleDownload = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!isTauriApp()) return; // browser: let the native <a download> handle it
+    e.preventDefault();
+    const toastId = toast.loading(`Descargando ${file.name}…`);
+    try {
+      const res = await fetch(downloadUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      await saveReceivedFile(file.name, blob);
+      toast.success(`${file.name} guardado en Descargas/SrvFiles`, { id: toastId });
+    } catch {
+      toast.error(`Error al descargar ${file.name}`, { id: toastId });
+    }
+  };
+
   if (viewMode === 'grid') {
     return (
       <div className="file-card" id={`file-${file.name}`}>
@@ -24,7 +41,7 @@ export function FileItem({ file, onRequestDelete, viewMode, getDownloadUrl, canD
           <span className="file-card__meta">{formatBytes(file.size)}</span>
         </div>
         <div className="file-card__actions">
-          <a href={downloadUrl} className="btn-icon btn-icon--download" title="Descargar" download>
+          <a href={downloadUrl} className="btn-icon btn-icon--download" title="Descargar" download onClick={handleDownload}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
@@ -53,7 +70,7 @@ export function FileItem({ file, onRequestDelete, viewMode, getDownloadUrl, canD
       </td>
       <td className="file-row__size">{formatBytes(file.size)}</td>
       <td className="file-row__actions">
-        <a href={downloadUrl} className="btn-icon btn-icon--download" title="Descargar" download>
+        <a href={downloadUrl} className="btn-icon btn-icon--download" title="Descargar" download onClick={handleDownload}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="7 10 12 15 17 10" />

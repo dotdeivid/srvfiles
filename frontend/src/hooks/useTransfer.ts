@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { TransferConnection, type TransferClient, type IncomingTransferRequest } from '../api/transfer.api';
 import { isTauriApp } from './useDownloadDir';
+import { getToken } from '../lib/auth';
+
+// crypto.randomUUID no está disponible en contextos no-HTTPS (HTTP sobre LAN)
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -34,7 +46,9 @@ export function useTransfer(
   serverUrl: string,
   appName: string,
   onFileReceived: (fileName: string, mimeType: string, blob: Blob) => void,
-  onSendRejected?: () => void
+  onSendRejected?: () => void,
+  authenticated = false,
+  onFilesChanged?: () => void,
 ) {
   const connRef = useRef<TransferConnection | null>(null);
   const pendingSendRef = useRef<{ transferId: string; file: File; peerId: string } | null>(null);
@@ -46,6 +60,8 @@ export function useTransfer(
   useEffect(() => { onFileReceivedRef.current = onFileReceived; });
   const onSendRejectedRef = useRef(onSendRejected);
   useEffect(() => { onSendRejectedRef.current = onSendRejected; });
+  const onFilesChangedRef = useRef(onFilesChanged);
+  useEffect(() => { onFilesChangedRef.current = onFilesChanged; });
   const appNameRef = useRef(appName);
   useEffect(() => { appNameRef.current = appName; });
 
@@ -61,15 +77,40 @@ export function useTransfer(
     connRef.current = conn;
 
     conn.ws.onopen = () => {
-      conn.register(appNameRef.current, isTauriApp());
-      conn.setReceiving(true);
+      const token = getToken();
+      console.log('[Transfer] WS abierto, token:', token ? 'sí' : 'no');
+      if (token) {
+        conn.auth(token);
+        // register() and setReceiving() are called on auth_ok below
+      } else {
+        // No token yet — connection will stay open until auth_ok or be closed by server
+      }
     };
 
-    conn.on('welcome', (msg) => setMyClientId(msg.clientId));
+    conn.on('auth_ok', () => {
+      console.log('[Transfer] auth_ok → registrando como', appNameRef.current);
+      conn.register(appNameRef.current, isTauriApp());
+      conn.setReceiving(true);
+    });
 
-    conn.on('clients', (msg) => setOnlineClients(msg.clients));
+    conn.on('welcome', (msg) => {
+      console.log('[Transfer] welcome, clientId:', msg.clientId);
+      setMyClientId(msg.clientId);
+    });
 
-    conn.on('send-request', (msg) => setIncomingRequest(msg));
+    conn.on('clients', (msg) => {
+      console.log('[Transfer] clients update:', msg.clients.map((c: TransferClient) => `${c.appName}(${c.clientId})`).join(', '));
+      setOnlineClients(msg.clients);
+    });
+
+    conn.on('files-changed', () => {
+      onFilesChangedRef.current?.();
+    });
+
+    conn.on('send-request', (msg) => {
+      console.log('[Transfer] send-request recibido de', msg.fromName);
+      setIncomingRequest(msg);
+    });
 
     conn.on('send-accept', async (msg) => {
       const pending = pendingSendRef.current;
@@ -121,7 +162,8 @@ export function useTransfer(
       setActiveTransfer((prev) => prev ? { ...prev, progress } : null);
     });
 
-    conn.ws.onerror = () => console.warn('[Transfer] WebSocket error');
+    conn.ws.onerror = (e) => console.warn('[Transfer] WebSocket error', e);
+    conn.ws.onclose = (e) => console.log('[Transfer] WS cerrado, código:', e.code, e.reason);
 
     return () => {
       conn.close();
@@ -129,7 +171,10 @@ export function useTransfer(
       pendingSendRef.current = null;
       receiveBuffers.current.clear();
     };
-  }, [serverUrl]); // appName intentionally omitted — read from ref to avoid reconnecting
+  // authenticated incluido: cuando el token pasa a estar disponible hay que
+  // reconectar para que onopen pueda enviar auth → auth_ok → register.
+  // appName omitido intencionalmente — se lee del ref para evitar reconectar.
+  }, [serverUrl, authenticated]);
 
   // ─── Public API ──────────────────────────────────────────────────
 
@@ -153,8 +198,9 @@ export function useTransfer(
    */
   const sendFileTo = useCallback((toClientId: string, file: File, peerName: string) => {
     const conn = connRef.current;
-    if (!conn) return;
-    const transferId = crypto.randomUUID();
+    if (!conn) { console.warn('[Transfer] sendFileTo: sin conexión'); return; }
+    const transferId = generateUUID();
+    console.log('[Transfer] enviando a', peerName, '(', toClientId, ') archivo:', file.name, 'transferId:', transferId);
     pendingSendRef.current = { transferId, file, peerId: toClientId };
     setActiveTransfer({
       transferId,

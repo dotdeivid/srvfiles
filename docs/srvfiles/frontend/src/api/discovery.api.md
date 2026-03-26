@@ -22,9 +22,13 @@ export interface DiscoveredServer {
 ```ts
 export async function scanNetwork(): Promise<DiscoveredServer[]> {
   const localApi = getApiUrl();
+  const token = getToken();
   const { data } = await axios.get<DiscoveredServer[]>(
     `${localApi}/api/discovery/scan`,
-    { timeout: 15000 }
+    {
+      timeout: 15000,
+      headers: token ? { 'X-SrvFiles-Token': token } : {},
+    }
   );
   return data;
 }
@@ -34,10 +38,14 @@ export async function scanNetwork(): Promise<DiscoveredServer[]> {
 
 Le pide al **servidor local** que escanee la subnet `/24` en busca de otras instancias de SrvFiles. El frontend no hace el escaneo directamente — lo delega al backend, que tiene acceso directo a la red.
 
+### Header de autenticación `X-SrvFiles-Token`
+
+La función incluye el token de sesión en la cabecera `X-SrvFiles-Token` cuando está disponible. Esto es necesario porque el endpoint `/api/discovery/scan` está protegido por autenticación. Sin el header, servidores con PIN activo responderían con 401, bloqueando el descubrimiento desde clientes mobile que operan como servidor.
+
 ### Flujo
 
 ```
-Frontend → GET /api/discovery/scan → Backend local
+Frontend → GET /api/discovery/scan (con X-SrvFiles-Token) → Backend local
                                            ↓
                             Escanea 192.168.1.1–254
                                            ↓

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 const STORAGE_KEY = import.meta.env.VITE_STORAGE_KEY ?? 'srvfiles-device-name';
 
@@ -31,16 +31,14 @@ function randomName(): string {
  */
 export function useDeviceName() {
   const [deviceName, setDeviceName] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEY) || randomName();
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return saved;
+    // Primera vez: asignar nombre aleatorio automáticamente (sin modal)
+    const name = randomName();
+    localStorage.setItem(STORAGE_KEY, name);
+    return name;
   });
   const [showNameModal, setShowNameModal] = useState(false);
-
-  useEffect(() => {
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      // First launch — show modal so user can set a meaningful name
-      setShowNameModal(true);
-    }
-  }, []);
 
   /**
    * Persists the device name to `localStorage` and hides the name modal.

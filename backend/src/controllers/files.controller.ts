@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import * as filesService from '../services/files.service';
+import { broadcastFilesChanged } from '../services/transfer.service';
 
 /**
  * Controller layer for file endpoints.
@@ -30,6 +31,7 @@ export function uploadFiles(req: Request, res: Response): void {
       message: `${files.length} file(s) uploaded successfully`,
       files: uploaded,
     });
+    broadcastFilesChanged();
   } catch (err) {
     console.error('Upload error:', err);
     res.status(500).json({ error: 'Failed to upload files' });
@@ -118,6 +120,7 @@ export function deleteFile(req: Request, res: Response): void {
     }
 
     res.status(200).json({ message: `File "${filename}" deleted successfully` });
+    broadcastFilesChanged();
   } catch (err) {
     console.error('Delete error:', err);
     res.status(500).json({ error: 'Failed to delete file' });

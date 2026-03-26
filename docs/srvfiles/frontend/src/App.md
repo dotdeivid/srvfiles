@@ -73,13 +73,15 @@ Es la parte más grande del archivo. Recibe tres props:
 ### Hooks usados
 
 ```tsx
-const { files, stats, config, loading, uploading, uploadProgress, error, upload, remove, getDownloadUrl } = useFiles(serverUrl);
+const { authenticated, pinDialogOpen, pinError, serverPin, submitPin } = useAuth(serverUrl);
+const { files, stats, config, loading, uploading, uploadProgress, error, upload, remove, getDownloadUrl } = useFiles(authenticated && !pinDialogOpen ? serverUrl : null);
 const { deviceName, showNameModal, saveName } = useDeviceName();
 const { myClientId, onlineClients, incomingRequest, activeTransfer, sendFileTo, acceptTransfer, rejectTransfer, cancelTransfer, rename } = useTransfer(...);
 ```
 
-- **`useFiles`**: Maneja la lista de archivos, el estado de carga, y las operaciones de subir/borrar.
-- **`useDeviceName`**: Maneja el nombre del dispositivo (guardado en `localStorage`).
+- **`useAuth`**: Maneja la autenticación PIN. Para servidores locales (localhost/Tauri) obtiene el PIN automáticamente y autentica sin intervención del usuario. Para servidores remotos, abre el `PinDialog`. Pasa `null` a `useFiles` hasta que la autenticación sea exitosa.
+- **`useFiles`**: Maneja la lista de archivos, el estado de carga, y las operaciones de subir/borrar. Solo se activa cuando `serverUrl` no es `null`.
+- **`useDeviceName`**: Maneja el nombre del dispositivo (guardado en `localStorage`, auto-asignado en primer uso).
 - **`useTransfer`**: Maneja la conexión WebSocket para transferencias directas entre dispositivos.
 
 ### Estado local
@@ -88,10 +90,12 @@ const { myClientId, onlineClients, incomingRequest, activeTransfer, sendFileTo, 
 const [switcherOpen, setSwitcherOpen] = useState(false);
 const [confirmOpen, setConfirmOpen] = useState(false);
 const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+const localLanIpRef = useRef<string | null>(null);
 ```
 
 - `switcherOpen`: controla si el modal de cambio de servidor está abierto.
 - `confirmOpen` + `pendingDelete`: controlan el modal de confirmación de borrado. `pendingDelete` guarda el nombre del archivo que se quiere borrar.
+- `localLanIpRef`: guarda la IP LAN del equipo local (Tauri). Se actualiza cuando se está conectado a localhost y `config.lanIp` está disponible, pero **no se limpia al cambiar a un servidor remoto**. Esto permite que `ServerSwitcherModal` ofrezca "Este equipo" como opción de retorno incluso estando conectado a un servidor remoto.
 
 ### Concepto: `useState`
 
@@ -185,9 +189,9 @@ const backendLanUrl = config?.lanIp ? `http://${config.lanIp}:${config.port}` : 
 
 - `appName`: nombre a mostrar en el header. Se obtiene del servidor; si no hay config, usa una variable de entorno o el valor por defecto.
 - `otherClients`: lista de todos los dispositivos conectados excepto yo mismo.
-- `serverClients`: solo los dispositivos que son servidores Tauri (para el chip del header).
-- `webUrl`: URL del frontend con IP LAN real (para el chip del header y el QR).
-- `backendLanUrl`: URL del backend con IP LAN real (para mostrar en el modal, evita que aparezca "localhost").
+- `serverClients`: solo los dispositivos que son servidores Tauri (`isServer=true`), pasados al `ServerSwitcherModal` como fuente de peers relay.
+- `webUrl`: URL del frontend con IP LAN real (para el QR y la fila "Web" del modal). Usa `config.frontendPort ?? config.port`.
+- `backendLanUrl`: URL del backend con IP LAN real. Se pasa al modal y al `PinDialog` para mostrar siempre la IP real (nunca "localhost").
 
 ### JSX retornado
 
@@ -195,12 +199,13 @@ El componente usa un **Fragment** (`<>...</>`) como contenedor raíz, lo que le 
 
 1. **Toaster + modales** (sin posición fija en el flujo):
    - `<Toaster>`: sistema de notificaciones (sonner).
-   - `<NameModal>`: aparece al primer uso para pedir el nombre.
+   - `<PinDialog>`: aparece cuando el servidor requiere autenticación manual (servidores remotos).
+   - `<NameModal>`: aparece cuando el usuario hace clic en el nombre del dispositivo en el header para renombrarlo.
    - `<IncomingTransferModal>`: aparece cuando alguien quiere enviarte un archivo.
    - `<ServerSwitcherModal>`: modal para cambiar de servidor.
    - `<ConfirmModal>`: modal para confirmar borrado.
 
-2. **`<header>`**: barra superior con el nombre de la app, el chip de IP/servidor, y el indicador de disco. Al estar **fuera del `<div className="app">`**, ocupa el 100% del ancho de la ventana sin trucos CSS.
+2. **`<header>`**: barra superior con el nombre de la app, el chip de servidor, y el indicador de disco. Al estar **fuera del `<div className="app">`**, ocupa el 100% del ancho de la ventana sin trucos CSS. El chip de servidor (`server-switcher-chip`) muestra un icono de server rack, el texto fijo **"Servidor"**, y opcionalmente el PIN del servidor local (icono candado + número). Al hacer clic abre `ServerSwitcherModal`.
 
 3. **`<div className="app">`**: contenedor principal con `max-width` y padding. Contiene:
    - Banner de error (si hay).

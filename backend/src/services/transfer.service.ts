@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
 import { getLanIp } from '../config';
+import { validateToken } from '../middleware/auth';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -66,6 +67,21 @@ function broadcastClients() {
   }
 }
 
+// ─── Files changed broadcast ─────────────────────────────────────────
+
+/**
+ * Broadcasts a `files-changed` event to all connected clients.
+ * Called by file routes after upload/delete to keep all UIs in sync.
+ */
+export function broadcastFilesChanged() {
+  const data = JSON.stringify({ type: 'files-changed' });
+  for (const client of clients.values()) {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(data);
+    }
+  }
+}
+
 // ─── Connection handler ──────────────────────────────────────────────
 
 /**
@@ -96,10 +112,12 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
   // When the desktop app connects from localhost, use the server's LAN IP instead of 127.0.0.1
   const clientIp = (rawIp === '127.0.0.1' || rawIp === '::1' || rawIp === '') ? getLanIp() : rawIp;
   let client: ConnectedClient | null = null;
+  let authenticated = false;
 
   ws.on('message', (data, isBinary) => {
-    // ── Binary: relay file chunk to receiver ──
+    // ── Binary: only allowed after authentication ──
     if (isBinary) {
+      if (!authenticated) { ws.close(4401, 'Unauthorized'); return; }
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
       const transferId = buf.subarray(0, 36).toString('ascii').trim();
       const session = transfers.get(transferId);
@@ -114,6 +132,18 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
     // ── Text: JSON signaling ──
     let msg: any;
     try { msg = JSON.parse(data.toString()); } catch { return; }
+
+    // ── Auth: must be the first message ──
+    // Client sends { type: "auth", token } (the token obtained via POST /api/auth).
+    // Server validates the token and responds { type: "auth_ok" }.
+    // Client then proceeds with the normal hello/welcome handshake.
+    if (!authenticated) {
+      if (msg.type !== 'auth') { ws.close(4401, 'Unauthorized'); return; }
+      if (!validateToken(String(msg.token ?? ''))) { ws.close(4401, 'Token inválido'); return; }
+      authenticated = true;
+      send(ws, { type: 'auth_ok' });
+      return;
+    }
 
     switch (msg.type) {
       case 'hello': {

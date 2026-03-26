@@ -164,3 +164,51 @@ npm run tauri:build
 #   Windows: .msi / .exe
 #   Linux:   .deb / .AppImage
 ```
+
+---
+
+## App mobile (Flutter)
+
+### Requisitos
+
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) ≥ 3.11
+- Android Studio o Xcode según la plataforma destino
+- Un dispositivo Android/iOS conectado o emulador
+
+### Desarrollo
+
+```bash
+cd mobile
+flutter pub get
+flutter run
+```
+
+### Build de release
+
+```bash
+# Android APK
+flutter build apk --release
+
+# Android App Bundle (para Play Store)
+flutter build appbundle --release
+
+# iOS (requiere macOS + Xcode)
+flutter build ipa --release
+```
+
+### Frontend web embebido en la app mobile
+
+Cuando el celular actúa como servidor, cualquier dispositivo en la red puede abrir su IP en el navegador y ver la interfaz web completa. Para incluir el frontend en la app hay que compilarlo y copiarlo antes del build de Flutter:
+
+```bash
+# 1. Compilar el frontend web
+cd frontend
+npm run build
+
+# 2. Copiar el output al directorio de assets del mobile
+cp -r dist/* ../mobile/assets/www/
+```
+
+Luego compilar la app Flutter normalmente. El relay embebido sirve los archivos estáticos automáticamente desde `assets/www/`.
+
+> **Nota:** hay que repetir este proceso cada vez que se modifique el frontend y se quiera actualizar la app mobile.

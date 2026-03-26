@@ -1,7 +1,7 @@
 # NameModal.tsx
 
 **Archivo:** `src/components/NameModal.tsx`
-**Rol:** Modal de primer uso que le pide al usuario que defina un nombre para su dispositivo.
+**Rol:** Modal para que el usuario cambie el nombre de su dispositivo. Se abre cuando el usuario hace clic en el nombre en el header. No se muestra automáticamente en el primer arranque — el nombre se auto-asigna al iniciar.
 
 ---
 

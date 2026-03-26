@@ -25,7 +25,7 @@ export function DiskStats({ stats }: DiskStatsProps) {
         />
       </div>
       <span className="disk-stats__text">
-        {formatBytes(stats.used)} / {formatBytes(stats.total)}
+        {formatBytes(stats.free)} / {formatBytes(stats.total)}
       </span>
     </div>
   );

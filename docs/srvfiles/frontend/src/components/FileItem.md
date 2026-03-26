@@ -27,7 +27,34 @@ const handleDelete = () => onRequestDelete(file.name);
 ```
 
 - **`downloadUrl`**: se calcula una vez al renderizar, llamando a `getDownloadUrl` con el nombre del archivo.
-- **`handleDelete`**: función local que llama a `onRequestDelete` con el nombre del archivo. Es un envoltorio para no tener que escribir una arrow function directamente en el JSX.
+- **`handleDelete`**: función local que llama a `onRequestDelete` con el nombre del archivo.
+
+---
+
+## Descarga en Tauri — `handleDownload`
+
+```tsx
+const handleDownload = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+  if (!isTauriApp()) return; // browser: let the native <a download> handle it
+  e.preventDefault();
+  const toastId = toast.loading(`Descargando ${file.name}…`);
+  try {
+    const res = await fetch(downloadUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    await saveReceivedFile(file.name, blob);
+    toast.success(`${file.name} guardado en Descargas/SrvFiles`, { id: toastId });
+  } catch {
+    toast.error(`Error al descargar ${file.name}`, { id: toastId });
+  }
+};
+```
+
+En el **navegador**, el clic en el enlace `<a download>` se deja pasar normalmente (el navegador gestiona la descarga). En **Tauri**, el comportamiento estándar se intercepta con `e.preventDefault()` para evitar que el WebView intente previsualizar el archivo. En su lugar:
+
+1. Se hace un `fetch` manual al `downloadUrl` para obtener un `Blob`.
+2. Se llama a `saveReceivedFile(file.name, blob)` (del hook `useDownloadDir`) que escribe el archivo en la carpeta `Downloads/SrvFiles` del sistema operativo usando la API de Tauri.
+3. Se muestra un toast de éxito o error según el resultado.
 
 ---
 
@@ -54,7 +81,7 @@ El componente devuelve estructuras HTML completamente diferentes según el modo 
     <span className="file-card__meta">{formatBytes(file.size)}</span>
   </div>
   <div className="file-card__actions">
-    <a href={downloadUrl} download>...</a>
+    <a href={downloadUrl} download onClick={handleDownload}>...</a>
     {canDelete && <button onClick={handleDelete}>...</button>}
   </div>
 </div>
@@ -75,7 +102,7 @@ El componente devuelve estructuras HTML completamente diferentes según el modo 
   </td>
   <td className="file-row__size">{formatBytes(file.size)}</td>
   <td className="file-row__actions">
-    <a href={downloadUrl} download>...</a>
+    <a href={downloadUrl} download onClick={handleDownload}>...</a>
     {canDelete && <button onClick={handleDelete}>...</button>}
   </td>
 </tr>
@@ -88,10 +115,10 @@ Devuelve un `<tr>` (fila de tabla), diseñado para ir dentro del `<tbody>` del `
 ## El atributo `download` en el enlace
 
 ```tsx
-<a href={downloadUrl} download>
+<a href={downloadUrl} download onClick={handleDownload}>
 ```
 
-El atributo `download` en HTML le indica al navegador que debe descargar el archivo en lugar de navegar a esa URL. Sin él, el navegador intentaría abrir el archivo en una nueva pestaña.
+El atributo `download` le indica al navegador que debe descargar el archivo en lugar de navegar a esa URL (aplica solo cuando no hay Tauri). En Tauri, `handleDownload` llama a `e.preventDefault()` antes de que el atributo tenga efecto.
 
 ---
 

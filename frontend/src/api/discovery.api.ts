@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getApiUrl } from './files.api';
+import { getToken } from '../lib/auth';
 
 export interface DiscoveredServer {
   ip: string;
@@ -17,9 +18,13 @@ export interface DiscoveredServer {
  */
 export async function scanNetwork(): Promise<DiscoveredServer[]> {
   const localApi = getApiUrl();
+  const token = getToken();
   const { data } = await axios.get<DiscoveredServer[]>(
     `${localApi}/api/discovery/scan`,
-    { timeout: 15000 }
+    {
+      timeout: 15000,
+      headers: token ? { 'X-SrvFiles-Token': token } : {},
+    }
   );
   return data;
 }

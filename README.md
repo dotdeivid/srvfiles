@@ -1,330 +1,100 @@
 # SrvFiles
 
-Sistema completo para compartir archivos entre dispositivos en la misma red local. No requiere internet, no requiere cuenta, no requiere configuración.
+Compartí archivos entre dispositivos en la misma red local. Sin internet, sin cuenta, sin configuración.
 
-## ¿Qué hace?
+## ¿Cómo funciona?
 
-Levantás SrvFiles en una computadora y todos los dispositivos de la red — otros PCs, celulares, tablets — pueden conectarse para subir, descargar y transferir archivos directamente entre sí.
+Levantás SrvFiles en una computadora — vía web o como app de escritorio (Tauri) — y todos los dispositivos de la red pueden conectarse desde el navegador o desde la app mobile para subir, descargar y transferir archivos entre sí.
 
-**Capacidades del servidor / app de escritorio:**
+## Características
 
-- **Subida de archivos** — drag & drop, clic para explorar, múltiples archivos simultáneos, hasta 2 GB por archivo
-- **Descarga directa** — link directo desde la lista; los archivos recibidos vía P2P se guardan automáticamente en `~/Downloads/SrvFiles/`
-- **Lista de archivos** — búsqueda en tiempo real, vista lista y grilla, ícono por tipo de archivo
-- **Eliminación** — borrar archivos del servidor desde la misma UI
-- **Espacio en disco** — indicador visual de uso en tiempo real
-- **QR de acceso** — código QR en el footer para conectar el celular sin tipear la IP; incluye copyright al pie
-- **Transferencia P2P directa** — enviá archivos de dispositivo a dispositivo sin pasar por disco, via relay WebSocket
-- **Detección automática** — la app encuentra servidores SrvFiles en la red local al iniciar
-- **Nombre de dispositivo** — cada cliente puede identificarse con un nombre visible para los demás
-- **App de escritorio nativa** — empaquetada con Tauri 2: instaladores nativos para macOS, Windows y Linux
-- **Modo servidor Tauri** — cualquier instancia Tauri actúa simultáneamente como servidor y cliente; se anuncia con `isServer: true` en el relay y recibe un badge "servidor" en la lista de peers
-- **Cambio de servidor** — modal con lista de servidores disponibles en la red (combinando relay + escaneo LAN, sin duplicados), campo de IP manual y botón de copia de URL
-- **Tipo de dispositivo** — cada peer se identifica con su icono: 🖥️ servidor Tauri, 🌐 navegador web, 📱 móvil; los servidores muestran además un botón "Ver" para navegar a sus archivos
-
----
+- **Subida y descarga** — drag & drop, múltiples archivos, hasta 10 GB por archivo
+- **Transferencia P2P directa** — enviá archivos de dispositivo a dispositivo sin pasar por disco, vía relay WebSocket
+- **Detección automática de servidores** — la UI encuentra otros servidores SrvFiles en la red; podés cambiar desde el header
+- **App de escritorio nativa** — empaquetada con Tauri 2 para macOS, Windows y Linux; actúa simultáneamente como servidor y cliente
+- **Autenticación PIN** — cada servidor genera un PIN automático de 6 dígitos; auto-auth desde localhost
+- **QR de acceso** — para conectar el celular sin tipear la IP
+- **Espacio en disco** — indicador visual en tiempo real
 
 ## Ecosistema
 
-SrvFiles está compuesto por cuatro componentes que comparten el mismo protocolo WebSocket para P2P:
-
-| Componente | Descripción | Repo |
-|------------|-------------|------|
-| **Backend** | Servidor Express + WebSocket (Node.js) | este repo |
-| **Frontend web** | Cliente React/Vite — accesible desde cualquier navegador | este repo |
-| **Desktop (Tauri)** | App nativa macOS/Windows/Linux — levanta el servidor automáticamente | este repo |
-| **Mobile (Flutter)** | Cliente Android — se conecta al servidor o funciona en modo P2P puro | [srvfiles-mobile](https://github.com/dotdeivid/srvfiles-mobile) |
-
-La app mobile puede conectarse al servidor de escritorio para explorar y descargar archivos, o funcionar de forma completamente autónoma levantando un relay embebido para transferencias phone-to-phone.
+| Componente | Descripción |
+|------------|-------------|
+| **Backend** | Node.js · Express · WebSocket |
+| **Frontend** | React · Vite — accesible desde cualquier navegador |
+| **Desktop** | Tauri 2 — empaqueta backend + frontend como app nativa |
+| **Mobile** | Flutter Android — cliente, servidor o relay P2P puro |
 
 ---
 
-## Desarrollo
+## Comandos
 
 ### Requisitos
 
-| Herramienta | Versión mínima |
-|-------------|----------------|
-| Node.js | 18 |
-| npm | 9 |
-| Rust + cargo | stable (solo para Tauri) |
+| Herramienta | Versión |
+|-------------|---------|
+| Node.js | 18+ |
+| npm | 9+ |
+| Rust + cargo | stable (solo Tauri) |
 
 ```bash
-# Instalar todas las dependencias (raíz + backend + frontend)
+# Instalar todas las dependencias
 npm run install:all
 ```
 
----
-
-### Modo web (sin Tauri)
-
-El modo más rápido para desarrollar. El backend corre en el puerto 3001 y el frontend (Vite) en el 5173 con hot reload.
+### Modo web (desarrollo)
 
 ```bash
-# Iniciar backend y frontend en paralelo
 npm run dev
 ```
 
-O en terminales separadas si necesitás ver los logs por separado:
+Backend en `http://localhost:3001`, frontend en `http://localhost:5173` con hot reload.
+Otros dispositivos acceden por `http://<tu-ip>:5173`.
+
+### Modo desktop / Tauri (desarrollo)
 
 ```bash
-# Terminal 1 — Backend
-cd backend && npm run dev
-
-# Terminal 2 — Frontend
-cd frontend && npm run dev
-```
-
-Accedé desde el navegador en `http://localhost:5173`.
-Otros dispositivos de la red pueden conectarse a `http://<tu-ip>:5173`.
-
-> Si corrés solo el backend (`cd backend && npm run dev`), servirá el último build estático del frontend desde `frontend/dist/`. Útil para pruebas de producción sin Vite.
-
----
-
-### Modo app de escritorio (Tauri)
-
-La app de escritorio empaqueta el backend como sidecar (binario autónomo que se lanza junto con la ventana Tauri).
-
-**Primera vez — compilar el sidecar:**
-
-```bash
+# Primera vez o tras cambios en el backend — compilar el sidecar
 npm run build:sidecar
-```
 
-Esto compila el backend con `pkg` y copia el binario a `src-tauri/binaries/`. Solo es necesario repetirlo cuando cambia el código del backend.
-
-**Desarrollo con hot reload:**
-
-```bash
+# Levantar Tauri con hot reload
 npm run tauri:dev
 ```
 
-Abre la ventana de Tauri con Vite corriendo detrás. Los cambios en el frontend se reflejan en tiempo real. Los cambios en el backend requieren re-ejecutar `npm run build:sidecar` y reiniciar.
-
----
-
-## Build
-
-### Build temporal (preview)
-
-Genera el frontend compilado y lo sirve desde el backend. Útil para probar la app completa antes de empaquetarla.
+### Build de producción
 
 ```bash
-# 1. Compilar el frontend
-cd frontend && npm run build
-
-# 2. Iniciar el backend (sirve frontend/dist/ automáticamente)
-cd ../backend && npm start
-```
-
-Accedé en `http://localhost:3001` (o la IP de red).
-
-### Build final (instaladores nativos)
-
-Genera instaladores nativos para distribución: `.dmg` en macOS, `.exe/.msi` en Windows, `.deb/.AppImage` en Linux.
-
-```bash
+# Genera instaladores nativos (.dmg / .exe / .deb)
 npm run tauri:build
 ```
 
-El proceso hace automáticamente:
-1. `vite build` — compila el frontend
-2. `build:sidecar` — compila el backend como binario autónomo
-3. `cargo build --release` — compila la capa Tauri
-4. Empaqueta todo en un instalador nativo
-
 Los artefactos quedan en `src-tauri/target/release/bundle/`.
 
----
-
-## CI / CD
-
-El repositorio incluye un workflow de GitHub Actions (`.github/workflows/release.yml`) que genera instaladores automáticamente al publicar un tag.
-
-### Cómo lanzar una release
+### Release automática (CI/CD)
 
 ```bash
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.2.0 && git push origin v1.2.0
 ```
 
-Esto dispara el workflow en GitHub y al terminar encontrás los instaladores en la sección **Releases** del repositorio.
-
-### Qué hace el workflow
-
-| Paso | Descripción |
-|------|-------------|
-| Checkout | Clona el repositorio |
-| System deps (Ubuntu) | Instala librerías de sistema necesarias para WebKit/GTK |
-| Node.js 20 | Configura el entorno JS con cache de `node_modules` |
-| Rust stable | Instala toolchain con el target de la plataforma |
-| Cache Rust | Cachea `~/.cargo` y `src-tauri/target` para builds más rápidos (~5-10 min ahorro) |
-| Install deps | `npm ci && npm run install:all` |
-| Build & Release | `tauri-apps/tauri-action@v0` — build completo + crea la GitHub Release |
-
-### Plataformas configuradas
-
-| Plataforma | Runner | Costo relativo |
-|------------|--------|----------------|
-| Linux (x86_64) | `ubuntu-22.04` | 1× |
-| Windows | `windows-latest` | 2× |
-| macOS (universal) | `macos-latest` | 10× |
-
-El target `universal-apple-darwin` genera un único `.dmg` que corre nativamente tanto en Intel como en Apple Silicon. Si querés ahorrar minutos de CI, podés comentar la entrada y compilar el `.dmg` manualmente con `npm run tauri:build` desde una Mac.
-
-### Variables requeridas
-
-El workflow usa `GITHUB_TOKEN` (provisto automáticamente por GitHub Actions). No requiere secrets adicionales.
-
----
-
-## Estructura del proyecto
-
-```
-srvfiles/
-├── backend/                        # Servidor Express + WebSocket
-│   └── src/
-│       ├── index.ts                # Entry point: Express + WebSocketServer
-│       ├── config/index.ts         # Variables de entorno y getLanIp()
-│       ├── types/index.ts          # Interfaces TypeScript compartidas
-│       ├── controllers/
-│       │   └── files.controller.ts # Handlers HTTP
-│       ├── routes/
-│       │   └── files.route.ts      # Definición de rutas
-│       ├── middleware/
-│       │   └── upload.ts           # Multer + resolución de conflictos de nombre
-│       ├── services/
-│       │   ├── files.service.ts    # Operaciones de archivo (listar, borrar, stats)
-│       │   ├── discovery.service.ts# Escaneo de red para otros servidores
-│       │   └── transfer.service.ts # Relay WebSocket para transferencias P2P
-│       └── utils/
-│           └── sanitize.ts         # Sanitización de nombres de archivo
-│
-├── frontend/                       # React + Vite
-│   └── src/
-│       ├── App.tsx                 # Componente raíz, layout y modales
-│       ├── api/
-│       │   ├── files.api.ts        # Cliente HTTP
-│       │   ├── discovery.api.ts    # Cliente de descubrimiento de red
-│       │   └── transfer.api.ts     # Cliente WebSocket P2P
-│       ├── components/
-│       │   ├── DropZone.tsx        # Área de drag & drop con staging
-│       │   ├── FileList.tsx        # Lista/grilla con búsqueda y toggle de vista
-│       │   ├── FileItem.tsx        # Fila o card de archivo individual
-│       │   ├── DiskStats.tsx       # Indicador de espacio en disco
-│       │   ├── QRFooter.tsx        # QR de acceso LAN + copyright al pie
-│       │   ├── ConfirmModal.tsx    # Dialog de confirmación genérico
-│       │   ├── NameModal.tsx       # Modal de nombre de dispositivo (primer arranque)
-│       │   ├── IncomingTransferModal.tsx # Solicitud de transferencia entrante
-│       │   ├── OnlineClients.tsx   # Lista de peers (con badge servidor y botón "Ver")
-│       │   └── ServerSwitcherModal.tsx  # Modal de cambio de servidor (relay + scan LAN)
-│       ├── hooks/
-│       │   ├── useFiles.ts         # Estado de archivos + polling automático
-│       │   ├── useMode.ts          # Auto-conexión y descubrimiento de servidor
-│       │   ├── useTransfer.ts      # Estado de transferencias P2P
-│       │   ├── useDeviceName.ts    # Nombre del dispositivo (localStorage)
-│       │   └── useDownloadDir.ts   # Integración con sistema de archivos Tauri
-│       └── utils/
-│           ├── fileIcons.ts        # Mapeo extensión → emoji
-│           └── format.ts           # formatBytes() y formatDate()
-│
-├── src-tauri/                      # Capa nativa Tauri 2
-│   ├── src/
-│   │   ├── main.rs                 # Entry point Tauri
-│   │   └── lib.rs                  # Setup: lanza el sidecar del backend
-│   ├── capabilities/
-│   │   └── default.json            # Permisos ACL de Tauri
-│   └── tauri.conf.json             # Configuración de la app (nombre, íconos, ventana)
-│
-├── scripts/
-│   └── build-sidecar.sh            # Compila el backend con pkg para Tauri
-│
-├── .github/
-│   └── workflows/
-│       └── release.yml             # CI/CD: build multiplataforma al pushear un tag
-│
-└── package.json                    # Scripts del monorepo
-```
-
-La app mobile tiene su propio repositorio con estructura independiente. Ver [srvfiles-mobile](https://github.com/dotdeivid/srvfiles-mobile).
+Dispara GitHub Actions y publica los instaladores en la sección Releases del repo.
 
 ---
 
 ## Variables de entorno
 
-### Backend
-
 | Variable | Default | Descripción |
 |----------|---------|-------------|
-| `PORT` | `3001` | Puerto del servidor Express y WebSocket |
-| `HOST` | `0.0.0.0` | Interfaz de red (escucha en todas) |
-| `APP_NAME` | `SrvFiles` | Nombre mostrado en la UI y logs |
-| `FRONTEND_PORT` | `5173` | Puerto del frontend en dev (para el chip de URL) |
-| `MAX_FILE_SIZE_MB` | `2048` | Límite de tamaño por archivo en MB |
-| `UPLOADS_DIR` | `<cwd>/uploads` | Ruta de almacenamiento (Tauri lo setea al data dir) |
-
-### Frontend (`frontend/.env`)
-
-| Variable | Default | Descripción |
-|----------|---------|-------------|
-| `VITE_BACKEND_PORT` | `3001` | Puerto del backend para auto-detección de URL |
-| `VITE_API_URL` | *(auto)* | Override completo de la URL del backend |
+| `PORT` | `3001` | Puerto del servidor |
+| `APP_NAME` | `SrvFiles` | Nombre mostrado en la UI |
+| `MAX_FILE_SIZE_MB` | `10240` | Límite por archivo (MB) |
+| `UPLOADS_DIR` | `<cwd>/uploads` | Carpeta de almacenamiento |
+| `VITE_BACKEND_PORT` | `3001` | Puerto del backend (frontend) |
 
 ---
 
-## API
+## Notas importantes
 
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| `GET` | `/api/health` | Health check — `{ status: "ok", app: "SrvFiles" }` |
-| `GET` | `/api/config` | Configuración: IP, puertos, nombre, límites |
-| `GET` | `/api/files` | Lista todos los archivos subidos |
-| `POST` | `/api/files/upload` | Sube uno o múltiples archivos (multipart/form-data, campo `files`) |
-| `GET` | `/api/files/download/:filename` | Descarga un archivo |
-| `DELETE` | `/api/files/:filename` | Elimina un archivo |
-| `GET` | `/api/files/stats` | Espacio en disco (total / usado / libre en bytes) |
-| `GET` | `/api/discovery/scan` | Escanea la red local buscando otros servidores SrvFiles |
-| `WS` | `/ws` | WebSocket para transferencias P2P (señalización JSON + relay binario) |
-
-### Protocolo WebSocket (P2P)
-
-Todos los clientes (web, desktop, mobile) usan el mismo protocolo:
-
-| Mensaje | Dirección | Descripción |
-|---------|-----------|-------------|
-| `hello` | cliente → relay | Registro con `appName`, `deviceType` (`mobile` \| `desktop`) e `isServer: boolean` |
-| `welcome` | relay → cliente | Confirmación con `clientId` asignado |
-| `clients` | relay → todos | Lista actualizada de peers conectados (incluye `isServer` por peer) |
-| `set-receiving` | cliente → relay | Marca al cliente como disponible para recibir |
-| `rename` | cliente → relay | Cambia el nombre visible del cliente sin reconectar |
-| `send-request` | cliente → relay → peer | Solicitud de transferencia |
-| `send-accept` | peer → relay → cliente | Aceptación |
-| `send-reject` | peer → relay → cliente | Rechazo (notifica al emisor con alerta roja) |
-| `send-cancel` | cualquiera → relay → otro | Cancelación |
-| `send-complete` | sender → relay → receiver | Fin de la transferencia |
-| `[binario]` | sender → relay → receiver | Chunk de archivo (prefijado con 36 bytes del transferId) |
-
----
-
-## Seguridad
-
-- **Sanitización de nombres**: previene path traversal (se rechazan `..`, `/`, `\` y caracteres especiales)
-- **Límite de tamaño**: configurable, por defecto 2 GB por archivo
-- **Sin autenticación**: diseñado para uso en red privada de confianza
-- **CORS permisivo**: necesario para acceso LAN desde distintos orígenes
-- **Eliminación**: disponible tanto desde la app de escritorio como desde el navegador
-
----
-
-## Stack
-
-| Capa | Tecnología |
-|------|-----------|
-| Backend | Node.js · Express · TypeScript · ws · Multer |
-| Frontend | React · Vite · TypeScript · react-dropzone · sonner · qrcode.react |
-| Desktop | Tauri 2 (Rust) · tauri-plugin-fs · tauri-plugin-dialog |
-| Mobile | Flutter · Dart · dart:io WebSocket relay embebido |
-| Estilos | Vanilla CSS — tema oscuro, glassmorphism |
-| Empaquetado | @yao-pkg/pkg (sidecar backend) |
-| CI/CD | GitHub Actions · tauri-apps/tauri-action · subosito/flutter-action |
+- El frontend sirve como SPA desde el backend en producción (`frontend/dist/`). En desarrollo, Vite corre separado en el puerto 5173.
+- En Tauri, el backend corre como sidecar (binario autónomo). Cambios en el backend requieren re-ejecutar `npm run build:sidecar`.
+- Los archivos recibidos vía P2P se guardan en `~/Downloads/SrvFiles/`.
+- La app mobile tiene su propio repo. Ver [srvfiles-mobile](https://github.com/dotdeivid/srvfiles-mobile).

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getToken, clearToken } from '../lib/auth';
 
 // ─── Base API URL detection ────────────────────────────────────────
 
@@ -68,8 +69,32 @@ export interface AppConfig {
  * @param baseUrl - The backend base URL (e.g. `"http://192.168.1.10:3001"`).
  * @returns An object containing all API methods scoped to `baseUrl`.
  */
+/** Thrown by the axios interceptor when the server returns 401. */
+export class AuthError extends Error {
+  constructor() { super('Unauthorized'); this.name = 'AuthError'; }
+}
+
 export function createFilesApi(baseUrl: string) {
   const instance = axios.create({ baseURL: `${baseUrl}/api/files` });
+
+  // Attach session token to every request
+  instance.interceptors.request.use((config) => {
+    const token = getToken();
+    if (token) config.headers['X-SrvFiles-Token'] = token;
+    return config;
+  });
+
+  // On 401: clear stale token and throw AuthError so callers can show PinDialog
+  instance.interceptors.response.use(
+    (res) => res,
+    (err) => {
+      if (err.response?.status === 401) {
+        clearToken();
+        return Promise.reject(new AuthError());
+      }
+      return Promise.reject(err);
+    }
+  );
 
   return {
     /**
@@ -128,8 +153,12 @@ export function createFilesApi(baseUrl: string) {
      *
      * @returns A promise resolving to {@link AppConfig}.
      */
-    getConfig: (): Promise<AppConfig> =>
-      axios.get(`${baseUrl}/api/config`).then((r) => r.data),
+    getConfig: (): Promise<AppConfig> => {
+      const token = getToken();
+      return axios.get(`${baseUrl}/api/config`, {
+        headers: token ? { 'X-SrvFiles-Token': token } : {},
+      }).then((r) => r.data);
+    },
 
     /**
      * Constructs the direct download URL for a given filename.
@@ -138,8 +167,11 @@ export function createFilesApi(baseUrl: string) {
      * @param filename - The exact filename as returned by the server.
      * @returns The absolute download URL string.
      */
-    getDownloadUrl: (filename: string): string =>
-      `${baseUrl}/api/files/download/${encodeURIComponent(filename)}`,
+    getDownloadUrl: (filename: string): string => {
+      const token = getToken();
+      const url = `${baseUrl}/api/files/download/${encodeURIComponent(filename)}`;
+      return token ? `${url}?token=${encodeURIComponent(token)}` : url;
+    },
   };
 }
 

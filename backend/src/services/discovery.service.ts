@@ -42,7 +42,7 @@ function probeHost(ip: string): Promise<DiscoveredServer | null> {
         res.on('end', () => {
           try {
             const json = JSON.parse(data);
-            if (json.status === 'ok' && json.app === 'SrvFiles') {
+            if (json.status === 'ok' && String(json.app).toLowerCase() === 'srvfiles') {
               resolve({ ip, url: `http://${ip}:${PORT}`, appName: json.appName || 'SrvFiles' });
             } else {
               resolve(null);

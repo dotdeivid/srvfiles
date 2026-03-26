@@ -67,7 +67,12 @@ export function DropZone({ onUpload, uploading, uploadProgress }: DropZoneProps)
             }
 
             if (files.length > 0) {
-              setStagedFiles((prev) => [...prev, ...files]);
+              setStagedFiles((prev) => {
+                // Deduplicate by name+size to avoid Tauri double-fire
+                const existing = new Set(prev.map((f) => `${f.name}:${f.size}`));
+                const unique = files.filter((f) => !existing.has(`${f.name}:${f.size}`));
+                return unique.length > 0 ? [...prev, ...unique] : prev;
+              });
             }
           }
         });
@@ -140,7 +145,7 @@ export function DropZone({ onUpload, uploading, uploadProgress }: DropZoneProps)
               Arrastrá archivos aquí o{' '}
               <span className="dropzone__link">buscá en tu dispositivo</span>
             </p>
-            <p className="dropzone__hint">Máximo 2GB por archivo</p>
+            <p className="dropzone__hint">Máximo 10GB por archivo</p>
           </>
         )}
       </div>

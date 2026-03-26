@@ -1,17 +1,7 @@
 # useFiles.ts
 
 **Archivo:** `src/hooks/useFiles.ts`
-**Rol:** Hook principal de gestión de archivos. Maneja el estado de la lista de archivos, el disco, la configuración del servidor, y las operaciones de subir/borrar con polling automático.
-
----
-
-## Constante
-
-```ts
-const POLL_INTERVAL = 5000;
-```
-
-Cada 5 segundos se refresca la lista de archivos y las estadísticas de disco en segundo plano.
+**Rol:** Hook principal de gestión de archivos. Maneja el estado de la lista de archivos, el disco, la configuración del servidor, y las operaciones de subir/borrar. Los datos se cargan una sola vez al montar (sin polling); las actualizaciones ocurren explícitamente después de cada operación.
 
 ---
 
@@ -20,14 +10,12 @@ Cada 5 segundos se refresca la lista de archivos y las estadísticas de disco en
 ```ts
 interface UseFilesReturn {
   files: FileInfo[];          // Lista de archivos en el servidor
-  stats: DiskStats | null;    // Espacio en disco
+  stats: DiskStats | null;    // Espacio en disco (libre / total)
   config: AppConfig | null;   // Configuración del servidor (IP, puertos, etc.)
   loading: boolean;           // Carga inicial en curso
   uploading: boolean;         // Subida en curso
   uploadProgress: number;     // Progreso de la subida (0–100)
   error: string | null;       // Mensaje de error (si hay)
-  fetchFiles: () => Promise<void>;
-  fetchStats: () => Promise<void>;
   upload: (files: File[]) => Promise<boolean>;
   remove: (filename: string) => Promise<boolean>;
   getDownloadUrl: (filename: string) => string;
@@ -39,21 +27,21 @@ interface UseFilesReturn {
 ## Hook `useFiles`
 
 ```ts
-export function useFiles(serverUrl?: string): UseFilesReturn
+export function useFiles(serverUrl: string | null): UseFilesReturn
 ```
 
-Recibe una URL de servidor opcional. Si no se pasa, usa la URL auto-detectada.
+Recibe la URL del servidor. Si es `null` (autenticación pendiente), no hace ninguna petición.
 
 ### Instancia de API memoizada
 
 ```ts
 const api = useMemo(
-  () => createFilesApi(serverUrl || getApiUrl()),
+  () => serverUrl ? createFilesApi(serverUrl) : null,
   [serverUrl]
 );
 ```
 
-`useMemo` crea la instancia de la API solo cuando `serverUrl` cambia. Sin esto, se crearía un nuevo objeto `api` en cada render, lo que a su vez dispararía todos los efectos que dependen de `api`.
+`useMemo` crea la instancia de la API solo cuando `serverUrl` cambia. Si `serverUrl` es `null`, no se crea la API.
 
 ---
 
@@ -74,7 +62,7 @@ const fetchFileList = useCallback(async () => {
 
 Hace un GET al endpoint `/api/files`. En éxito, limpia el error y actualiza la lista. En fallo, guarda el mensaje de error.
 
-`useCallback` memoriza la función para que no cambie de referencia entre renders (importante porque esta función se usa como dependencia de otros efectos).
+`useCallback` memoriza la función para que no cambie de referencia entre renders.
 
 ---
 
@@ -91,7 +79,7 @@ const fetchDiskStats = useCallback(async () => {
 }, [api]);
 ```
 
-Obtiene el uso de disco. Los errores se logean pero **no se muestran en la UI** — el indicador de disco simplemente no aparece si falla, lo que no es crítico para el usuario.
+Obtiene el uso de disco. Los errores se logean pero **no se muestran en la UI** — el indicador de disco simplemente no aparece si falla.
 
 ---
 
@@ -108,7 +96,7 @@ const fetchConfig = useCallback(async () => {
 }, [api]);
 ```
 
-Obtiene la configuración del servidor (nombre de app, IP LAN, puertos). Se llama **una sola vez** al inicializar, no en el polling.
+Obtiene la configuración del servidor (nombre de app, IP LAN, puertos). Se llama **una sola vez** al inicializar.
 
 ---
 
@@ -122,10 +110,10 @@ const uploadFile = useCallback(async (filesToUpload: File[]): Promise<boolean> =
     setError(null);
 
     await api.uploadFiles(filesToUpload, (progress) => {
-      setUploadProgress(progress);  // Callback llamado conforme avanza la subida
+      setUploadProgress(progress);
     });
 
-    await Promise.all([fetchFileList(), fetchDiskStats()]);  // Actualizar estado
+    await Promise.all([fetchFileList(), fetchDiskStats()]);
     return true;
   } catch (err) {
     setError(message);
@@ -139,8 +127,8 @@ const uploadFile = useCallback(async (filesToUpload: File[]): Promise<boolean> =
 
 - `setUploading(true)`: deshabilita el DropZone y muestra la barra de progreso.
 - El callback de progreso actualiza `uploadProgress` en tiempo real.
-- `Promise.all([...])`: ejecuta dos promesas en paralelo (más rápido que en secuencia).
-- `finally`: siempre resetea `uploading` y `uploadProgress`, ya sea que la subida haya salido bien o mal.
+- `Promise.all([...])`: refresca lista y disco en paralelo después de la subida.
+- `finally`: siempre resetea el estado de subida.
 
 ---
 
@@ -164,10 +152,11 @@ Llama al DELETE del backend y refresca la lista y el disco en caso de éxito.
 
 ---
 
-## Efecto principal: carga inicial + polling
+## Efecto principal: carga inicial
 
 ```ts
 useEffect(() => {
+  if (!api) return;
   setLoading(true);
   setFiles([]);
   setStats(null);
@@ -178,30 +167,12 @@ useEffect(() => {
     setLoading(false);
   };
   init();
-
-  pollRef.current = setInterval(() => {
-    fetchFileList();
-    fetchDiskStats();
-  }, POLL_INTERVAL);
-
-  return () => {
-    if (pollRef.current) clearInterval(pollRef.current);
-  };
-}, [fetchFileList, fetchDiskStats, fetchConfig]);
+}, [api, fetchFileList, fetchDiskStats, fetchConfig]);
 ```
 
-1. Resetea el estado para mostrar la pantalla de carga.
-2. Hace las tres peticiones iniciales en paralelo.
-3. Cuando todas terminan, `loading` pasa a `false`.
-4. Inicia el polling cada 5 segundos.
-5. **Cleanup**: al desmontar (o cuando `serverUrl` cambia), cancela el intervalo para no hacer peticiones al servidor anterior.
+1. Si `api` es `null` (sin serverUrl), no hace nada.
+2. Resetea el estado para mostrar la pantalla de carga.
+3. Hace las tres peticiones iniciales en paralelo.
+4. Cuando todas terminan, `loading` pasa a `false`.
 
-### ¿Por qué `pollRef`?
-
-```ts
-const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-```
-
-Se usa `useRef` para guardar el ID del intervalo porque:
-- No es estado visible que deba causar re-renders.
-- Necesita persistir entre renders para poder cancelarlo en el cleanup.
+No hay polling: los datos se actualizan únicamente después de operaciones explícitas (subida, eliminación).

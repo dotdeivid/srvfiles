@@ -160,7 +160,7 @@ Actualiza el nombre en la ref local y lo notifica al servidor. No reconecta el W
 const sendFileTo = useCallback((toClientId, file, peerName) => {
   const conn = connRef.current;
   if (!conn) return;
-  const transferId = crypto.randomUUID();
+  const transferId = generateUUID();  // Fallback seguro para contextos HTTP/LAN
   pendingSendRef.current = { transferId, file, peerId: toClientId };
   setActiveTransfer({
     transferId, fileName: file.name, fileSize: file.size,
@@ -171,7 +171,7 @@ const sendFileTo = useCallback((toClientId, file, peerName) => {
 }, []);
 ```
 
-Inicia un envío: genera un UUID para la sesión, guarda el archivo en `pendingSendRef`, y envía el `send-request` al servidor. El estado `waiting: true` indica que todavía no se aceptó.
+Inicia un envío: genera un UUID para la sesión con `generateUUID()` (que usa `crypto.randomUUID()` cuando está disponible y un fallback con `Math.random()` en contextos HTTP/LAN donde `crypto.randomUUID` no está disponible), guarda el archivo en `pendingSendRef`, y envía el `send-request` al servidor. El estado `waiting: true` indica que todavía no se aceptó.
 
 Cuando llega `send-accept`, el efecto principal lo maneja:
 ```ts

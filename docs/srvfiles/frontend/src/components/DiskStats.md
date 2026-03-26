@@ -53,14 +53,14 @@ const isCritical = usedPercent > 95;
     />
   </div>
   <span className="disk-stats__text">
-    {formatBytes(stats.used)} / {formatBytes(stats.total)}
+    {formatBytes(stats.free)} / {formatBytes(stats.total)}
   </span>
 </div>
 ```
 
 - **Barra de progreso**: un `<div>` exterior que actúa como contenedor (100% de ancho), y un `<div>` interior cuyo ancho se ajusta dinámicamente con `style={{ width: '${usedPercent}%' }}`.
 - **Clases condicionales**: usa un operador ternario anidado para aplicar la clase correcta según el nivel de uso.
-- **Texto**: muestra los bytes formateados legiblemente con `formatBytes()` (ej: `"12.4 GB / 50 GB"`).
+- **Texto**: muestra el espacio libre sobre el total con `formatBytes()` (ej: `"37.6 GB / 50 GB"`). Muestra `free` (no `used`) para que el usuario vea cuánto espacio queda disponible.
 
 ---
 

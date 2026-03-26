@@ -21,13 +21,15 @@ export interface IncomingTransferRequest {
 }
 
 type ServerMessage =
+  | { type: 'auth_ok' }
   | { type: 'welcome'; clientId: string }
   | { type: 'clients'; clients: TransferClient[] }
   | { type: 'send-request'; from: string; fromName: string; fileName: string; fileSize: number; mimeType: string; transferId: string }
   | { type: 'send-accept'; transferId: string }
   | { type: 'send-reject'; transferId: string; reason?: string }
   | { type: 'send-cancel'; transferId: string }
-  | { type: 'send-complete'; transferId: string };
+  | { type: 'send-complete'; transferId: string }
+  | { type: 'files-changed' };
 
 // ─── Chunk size ──────────────────────────────────────────────────────
 // 256 KB per chunk — balanced for LAN speeds without memory bloat
@@ -130,8 +132,20 @@ export class TransferConnection {
   }
 
   /**
+   * Sends the `auth` message with the session token obtained via POST /api/auth.
+   * The server responds with `auth_ok` if valid, or closes with 4401.
+   * Must be called before `register()`.
+   *
+   * @param token - The session token from sessionStorage.
+   */
+  auth(token: string) {
+    this.sendJson({ type: 'auth', token });
+  }
+
+  /**
    * Sends the initial `hello` message to register this client on the server.
    * The server responds with a `welcome` message containing the assigned `clientId`.
+   * Must be called after `auth_ok` is received.
    *
    * @param appName - The display name shown to other connected clients.
    */
