@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import type { TransferClient } from '../api/transfer.api';
 import type { ActiveTransfer } from '../hooks/useTransfer';
-import { formatBytes } from '../utils/format';
+import { formatBytes, extractIp } from '../utils/format';
 
 interface OnlineClientsProps {
   clients: TransferClient[];
@@ -34,7 +34,7 @@ export function OnlineClients({
   }
 
   // Extract current server IP for comparison
-  const currentServerIp = currentServerUrl?.replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+  const currentServerIp = currentServerUrl ? extractIp(currentServerUrl) : undefined;
 
   return (
     <div className="online-clients__list">

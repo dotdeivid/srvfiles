@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import type { TransferClient } from '../api/transfer.api';
 import type { DiscoveredServer } from '../api/discovery.api';
 import { isTauriApp } from '../hooks/useDownloadDir';
-import { authenticate } from '../lib/auth';
+import { authenticate, isLocalOrigin } from '../lib/auth';
+import { stripProtocol, extractIp } from '../utils/format';
 
 interface ServerSwitcherModalProps {
   isOpen: boolean;
@@ -19,10 +20,12 @@ interface ServerSwitcherModalProps {
 
 function CopyBtn({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function handleCopy() {
     navigator.clipboard.writeText(text).then(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
     });
   }
   return (
@@ -40,10 +43,6 @@ function CopyBtn({ text }: { text: string }) {
     </button>
   );
 }
-
-// ─── Constants ───────────────────────────────────────────────────────
-
-const LOCALHOST_URL = 'http://localhost:3001';
 
 // ─── Component ───────────────────────────────────────────────────────
 
@@ -86,13 +85,15 @@ export function ServerSwitcherModal({
 
   // Auto-focus PIN input
   useEffect(() => {
-    if (pendingUrl) setTimeout(() => pinInputRef.current?.focus(), 50);
+    if (!pendingUrl) return;
+    const id = setTimeout(() => pinInputRef.current?.focus(), 50);
+    return () => clearTimeout(id);
   }, [pendingUrl]);
 
   if (!isOpen) return null;
 
   // Merge peers del relay + scan, sin duplicar por IP ni mostrar el servidor actual
-  const currentIp = currentServerUrl.replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+  const currentIp = extractIp(currentServerUrl);
   const relayServers = serverClients
     .filter((c) => c.isServer && c.ip !== currentIp)
     .map((c) => ({ ip: c.ip, url: `http://${c.ip}:3001`, appName: c.appName }));
@@ -118,13 +119,11 @@ export function ServerSwitcherModal({
   }
 
   // IPs para la sección "Conectado"
-  const backendDisplay = currentServerUrl.replace(/^https?:\/\//, '');
-  const webDisplay = copyUrl ? copyUrl.replace(/^https?:\/\//, '') : backendDisplay;
+  const backendDisplay = stripProtocol(currentServerUrl);
+  const webDisplay = copyUrl ? stripProtocol(copyUrl) : backendDisplay;
 
   function handleConnect(url: string) {
-    const inputIp = url.replace(/^https?:\/\//, '');
-    const currentIpPort = currentServerUrl.replace(/^https?:\/\//, '');
-    if (inputIp === currentIpPort) return;
+    if (stripProtocol(url) === stripProtocol(currentServerUrl)) return;
 
     if (!isTauriApp()) {
       window.open(url, '_blank');
@@ -132,8 +131,7 @@ export function ServerSwitcherModal({
     }
 
     // Tauri conectando a servidor propio o localhost: no necesita PIN (auto-auth)
-    const isLocal = url === LOCALHOST_URL || url.includes('localhost') || url.includes('127.0.0.1')
-      || (localLanIp !== null && url.includes(localLanIp));
+    const isLocal = isLocalOrigin(url) || (localLanIp !== null && url.includes(localLanIp));
     if (isLocal) {
       onConnect(url);
       onClose();
@@ -174,9 +172,7 @@ export function ServerSwitcherModal({
     let url = raw;
     if (!url.startsWith('http')) url = `http://${url}`;
     if (!/:\d+$/.test(url)) url = `${url}:3001`;
-    const inputIp = url.replace(/^https?:\/\//, '');
-    const currentIpPort = currentServerUrl.replace(/^https?:\/\//, '');
-    if (inputIp === currentIpPort) {
+    if (stripProtocol(url) === stripProtocol(currentServerUrl)) {
       setSameServerMsg(true);
       return;
     }
@@ -194,7 +190,7 @@ export function ServerSwitcherModal({
 
   // ─── PIN prompt ────────────────────────────────────────────────
   if (pendingUrl) {
-    const pendingDisplay = pendingUrl.replace(/^https?:\/\//, '');
+    const pendingDisplay = stripProtocol(pendingUrl);
     return (
       <div className="modal-overlay" onClick={handleCancelPending}>
         <div className="pin-modal" onClick={(e) => e.stopPropagation()}>

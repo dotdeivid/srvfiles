@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getToken,
   authenticate,
+  isLocalOrigin,
+  onTokenCleared,
 } from '../lib/auth';
 
 interface UseAuthReturn {
@@ -30,23 +32,6 @@ export function useAuth(serverUrl: string): UseAuthReturn {
   const [pinError, setPinError] = useState<string | null>(null);
   const [serverPin, setServerPin] = useState<string | null>(null);
 
-  // Returns true only when serverUrl is genuinely on this machine (loopback / Tauri).
-  // NOTE: window.location.hostname === hostname is intentionally NOT included —
-  // it is always true when the page is served by that server, making it a
-  // tautology that would cause any LAN server to be treated as "local".
-  const isSameMachine = useCallback((url: string): boolean => {
-    try {
-      const { hostname } = new URL(url);
-      return (
-        hostname === 'localhost' ||
-        hostname === '127.0.0.1' ||
-        hostname === 'tauri.localhost'
-      );
-    } catch {
-      return false;
-    }
-  }, []);
-
   // Returns the PIN fetch URL, routing through loopback so the backend
   // accepts the request even when serverUrl uses the LAN IP.
   const toPinUrl = useCallback((url: string): string => {
@@ -60,7 +45,7 @@ export function useAuth(serverUrl: string): UseAuthReturn {
   }, []);
 
   useEffect(() => {
-    if (isSameMachine(serverUrl)) {
+    if (isLocalOrigin(serverUrl)) {
       // Local server: always fetch the PIN for display in the header.
       // Use localhost explicitly so the backend's loopback-only guard passes.
       fetch(toPinUrl(serverUrl))
@@ -90,20 +75,19 @@ export function useAuth(serverUrl: string): UseAuthReturn {
 
     // Remote server: ask the user for the PIN
     setPinDialogOpen(true);
-  }, [serverUrl, isSameMachine, toPinUrl]);
+  }, [serverUrl, toPinUrl]);
 
-  // Re-check if token was cleared externally (e.g. on 401 from useFiles).
-  // Poll every 2s — lightweight since it only reads sessionStorage.
+  // Re-open PIN dialog when token is cleared externally (e.g. on 401 from useFiles).
+  const authenticatedRef = useRef(authenticated);
+  authenticatedRef.current = authenticated;
   useEffect(() => {
-    if (!authenticated) return;
-    const id = setInterval(() => {
-      if (!getToken()) {
+    return onTokenCleared(() => {
+      if (authenticatedRef.current) {
         setAuthenticated(false);
         setPinDialogOpen(true);
       }
-    }, 2000);
-    return () => clearInterval(id);
-  }, [authenticated]);
+    });
+  }, []);
 
   const submitPin = useCallback(async (pin: string) => {
     setPinError(null);

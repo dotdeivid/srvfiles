@@ -12,8 +12,16 @@ export function setToken(token: string): void {
   sessionStorage.setItem(TOKEN_KEY, token);
 }
 
+const TOKEN_CLEARED = 'srvfiles:token-cleared';
+
 export function clearToken(): void {
   sessionStorage.removeItem(TOKEN_KEY);
+  window.dispatchEvent(new CustomEvent(TOKEN_CLEARED));
+}
+
+export function onTokenCleared(cb: () => void): () => void {
+  window.addEventListener(TOKEN_CLEARED, cb);
+  return () => window.removeEventListener(TOKEN_CLEARED, cb);
 }
 
 // ─── Authentication ──────────────────────────────────────────────────

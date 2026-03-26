@@ -85,4 +85,3 @@ server.listen(PORT, HOST, () => {
 process.on('SIGTERM', () => { resetAuth(); process.exit(0); });
 process.on('SIGINT',  () => { resetAuth(); process.exit(0); });
 
-export default app;

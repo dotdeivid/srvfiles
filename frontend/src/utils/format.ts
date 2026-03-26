@@ -1,3 +1,11 @@
+export function stripProtocol(url: string): string {
+  return url.replace(/^https?:\/\//, '');
+}
+
+export function extractIp(url: string): string {
+  return stripProtocol(url).replace(/:\d+$/, '');
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Toaster, toast } from 'sonner';
 import { useFiles } from './hooks/useFiles';
 import { useMode } from './hooks/useMode';
@@ -162,10 +162,10 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
   const backendLanUrl = config?.lanIp ? `http://${config.lanIp}:${config.port}` : serverUrl;
 
   // Track local LAN IP — persists even after switching to a remote server
-  const localLanIpRef = useRef<string | null>(null);
+  const [localLanIp, setLocalLanIp] = useState<string | null>(null);
   useEffect(() => {
     if ((serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1')) && config?.lanIp) {
-      localLanIpRef.current = config.lanIp;
+      setLocalLanIp(config.lanIp);
     }
   }, [serverUrl, config?.lanIp]);
 
@@ -213,7 +213,7 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
         currentServerUrl={backendLanUrl}
         copyUrl={webUrl ?? serverUrl}
         serverClients={serverClients}
-        localLanIp={localLanIpRef.current}
+        localLanIp={localLanIp}
         onConnect={onConnect}
         onRescan={onRescan}
       />

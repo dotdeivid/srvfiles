@@ -16,10 +16,10 @@ export function NameModal({ isOpen, defaultName, onSave }: NameModalProps) {
 
   // Reset input whenever the modal opens with a new default
   useEffect(() => {
-    if (isOpen) {
-      setValue(defaultName);
-      setTimeout(() => inputRef.current?.select(), 50);
-    }
+    if (!isOpen) return;
+    setValue(defaultName);
+    const id = setTimeout(() => inputRef.current?.select(), 50);
+    return () => clearTimeout(id);
   }, [isOpen, defaultName]);
 
   if (!isOpen) return null;

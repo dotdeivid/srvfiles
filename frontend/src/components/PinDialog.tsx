@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { stripProtocol } from '../utils/format';
 
 interface PinDialogProps {
   isOpen: boolean;
@@ -16,15 +17,15 @@ export function PinDialog({ isOpen, serverUrl, error, onSubmit }: PinDialogProps
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      setPin('');
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
+    if (!isOpen) return;
+    setPin('');
+    const id = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(id);
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const host = serverUrl.replace(/^https?:\/\//, '');
+  const host = stripProtocol(serverUrl);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
