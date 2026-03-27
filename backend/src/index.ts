@@ -11,6 +11,7 @@ import authRouter from './routes/auth.route';
 import { PORT, HOST, getLanIp, APP_NAME, MAX_FILE_SIZE_MB } from './config';
 import { handleConnection } from './services/transfer.service';
 import { generatePin, getPin, requireAuth, resetAuth } from './middleware/auth';
+import { log } from './lib/logger';
 
 // ─── Express app setup ──────────────────────────────────────────────
 const app = express();
@@ -79,9 +80,18 @@ server.listen(PORT, HOST, () => {
   // Special format for Tauri IPC to parse the PIN
   console.log(`   PIN: ${pin}`);
   console.log('');
+
+  log.info('index.ts', `${APP_NAME} server started`, { port: PORT, lanIp, maxFileSizeMb: MAX_FILE_SIZE_MB });
+});
+
+server.on('error', (err) => {
+  log.error('index.ts', 'Error al iniciar el servidor HTTP', { error: String(err) });
 });
 
 // ─── Cleanup on shutdown ─────────────────────────────────────────────
 process.on('SIGTERM', () => { resetAuth(); process.exit(0); });
 process.on('SIGINT',  () => { resetAuth(); process.exit(0); });
+process.on('uncaughtException', (err) => {
+  log.error('index.ts', 'Excepción no capturada', { error: String(err) });
+});
 

@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
 import { getLanIp } from '../config';
 import { validateToken } from '../middleware/auth';
+import { log } from '../lib/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -111,6 +112,7 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
   const rawIp = (req.socket.remoteAddress || '').replace('::ffff:', '');
   // When the desktop app connects from localhost, use the server's LAN IP instead of 127.0.0.1
   const clientIp = (rawIp === '127.0.0.1' || rawIp === '::1' || rawIp === '') ? getLanIp() : rawIp;
+  log.debug('transfer.service.ts', 'New WS connection', { clientIp });
   let client: ConnectedClient | null = null;
   let authenticated = false;
 
@@ -121,7 +123,10 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
       const transferId = buf.subarray(0, 36).toString('ascii').trim();
       const session = transfers.get(transferId);
-      if (!session) return;
+      if (!session) {
+        log.warn('transfer.service.ts', 'Binary chunk received for unknown transferId', { transferId });
+        return;
+      }
       const receiver = clients.get(session.receiverClientId);
       if (receiver?.ws.readyState === WebSocket.OPEN) {
         receiver.ws.send(buf, { binary: true });
@@ -131,16 +136,28 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
 
     // ── Text: JSON signaling ──
     let msg: any;
-    try { msg = JSON.parse(data.toString()); } catch { return; }
+    try { msg = JSON.parse(data.toString()); } catch (err) {
+      log.error('transfer.service.ts', 'Mensaje WS no es JSON válido', { error: String(err) });
+      return;
+    }
 
     // ── Auth: must be the first message ──
     // Client sends { type: "auth", token } (the token obtained via POST /api/auth).
     // Server validates the token and responds { type: "auth_ok" }.
     // Client then proceeds with the normal hello/welcome handshake.
     if (!authenticated) {
-      if (msg.type !== 'auth') { ws.close(4401, 'Unauthorized'); return; }
-      if (!validateToken(String(msg.token ?? ''))) { ws.close(4401, 'Token inválido'); return; }
+      if (msg.type !== 'auth') {
+        log.warn('transfer.service.ts', 'First WS message was not auth', { type: msg.type, clientIp });
+        ws.close(4401, 'Unauthorized');
+        return;
+      }
+      if (!validateToken(String(msg.token ?? ''))) {
+        log.warn('transfer.service.ts', 'WS auth failed — invalid token', { clientIp });
+        ws.close(4401, 'Token inválido');
+        return;
+      }
       authenticated = true;
+      log.debug('transfer.service.ts', 'WS client authenticated', { clientIp });
       send(ws, { type: 'auth_ok' });
       return;
     }
@@ -149,6 +166,7 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
       case 'hello': {
         client = { ws, clientId, appName: msg.appName || 'Unknown', receiving: false, ip: clientIp, deviceType: msg.deviceType === 'mobile' ? 'mobile' : 'desktop', isServer: msg.isServer === true };
         clients.set(clientId, client);
+        log.info('transfer.service.ts', 'Client registered', { clientId, appName: client.appName, ip: clientIp, deviceType: client.deviceType, isServer: client.isServer });
         send(ws, { type: 'welcome', clientId });
         broadcastClients();
         break;
@@ -176,9 +194,11 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
         const { to, fileName, fileSize, mimeType, transferId } = msg;
         const receiver = clients.get(to);
         if (!receiver || receiver.ws.readyState !== WebSocket.OPEN) {
+          log.warn('transfer.service.ts', 'Transfer target offline', { transferId, to, fileName });
           send(ws, { type: 'send-reject', transferId, reason: 'offline' });
           return;
         }
+        log.info('transfer.service.ts', 'Transfer request relayed', { transferId, from: client.appName, to: receiver.appName, fileName, fileSize });
         transfers.set(transferId, {
           transferId,
           senderClientId: clientId,
@@ -203,6 +223,7 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
         if (!client) return;
         const session = transfers.get(msg.transferId);
         if (!session || session.receiverClientId !== clientId) return;
+        log.info('transfer.service.ts', 'Transfer accepted', { transferId: msg.transferId, receiver: client.appName });
         const sender = clients.get(session.senderClientId);
         if (sender) send(sender.ws, { type: 'send-accept', transferId: msg.transferId });
         break;
@@ -212,6 +233,7 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
         if (!client) return;
         const session = transfers.get(msg.transferId);
         if (!session || session.receiverClientId !== clientId) return;
+        log.info('transfer.service.ts', 'Transfer rejected', { transferId: msg.transferId, receiver: client.appName });
         const sender = clients.get(session.senderClientId);
         if (sender) send(sender.ws, { type: 'send-reject', transferId: msg.transferId });
         transfers.delete(msg.transferId);
@@ -222,6 +244,7 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
         if (!client) return;
         const session = transfers.get(msg.transferId);
         if (!session) return;
+        log.info('transfer.service.ts', 'Transfer cancelled', { transferId: msg.transferId, by: client.appName });
         // Notify the other party
         const otherId = session.senderClientId === clientId
           ? session.receiverClientId
@@ -236,6 +259,7 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
         if (!client) return;
         const session = transfers.get(msg.transferId);
         if (!session || session.senderClientId !== clientId) return;
+        log.info('transfer.service.ts', 'Transfer complete', { transferId: msg.transferId, fileName: session.fileName, fileSize: session.fileSize });
         const receiver = clients.get(session.receiverClientId);
         if (receiver) send(receiver.ws, { type: 'send-complete', transferId: msg.transferId });
         transfers.delete(msg.transferId);
@@ -246,8 +270,11 @@ export function handleConnection(ws: WebSocket, req: IncomingMessage) {
 
   ws.on('close', () => {
     if (client) {
+      log.info('transfer.service.ts', 'Client disconnected', { clientId, appName: client.appName });
       clients.delete(clientId);
       broadcastClients();
+    } else {
+      log.debug('transfer.service.ts', 'Unauthenticated WS connection closed', { clientIp });
     }
   });
 }

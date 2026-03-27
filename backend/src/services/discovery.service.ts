@@ -1,5 +1,6 @@
 import http from 'http';
 import { getLanIp, PORT } from '../config';
+import { log } from '../lib/logger';
 
 export interface DiscoveredServer {
   ip: string;
@@ -72,9 +73,14 @@ export async function scanNetwork(): Promise<DiscoveredServer[]> {
   const localIp = getLanIp();
   const ips = getSubnetIPs();
 
+  log.info('discovery.service.ts', 'Starting LAN scan', { subnet: ips[0]?.split('.').slice(0, 3).join('.'), hostCount: ips.length });
+
   const results = await Promise.all(ips.map((ip) => probeHost(ip)));
 
-  return results
+  const found = results
     .filter((r): r is DiscoveredServer => r !== null)
     .filter((r) => r.ip !== localIp); // exclude self
+
+  log.info('discovery.service.ts', 'LAN scan complete', { found: found.length });
+  return found;
 }

@@ -1,3 +1,5 @@
+import { log } from '../lib/logger';
+
 /** Subfolder created inside the system Downloads directory. */
 const SUBFOLDER = import.meta.env.VITE_SUBFOLDER ?? 'SrvFiles';
 
@@ -33,9 +35,10 @@ export async function saveReceivedFile(fileName: string, blob: Blob): Promise<st
       const dir = `${await downloadDir()}/${SUBFOLDER}`;
       await mkdir(dir, { recursive: true });
       await writeFile(`${dir}/${fileName}`, new Uint8Array(await blob.arrayBuffer()));
+      void log.info('[saveReceivedFile] file saved to Tauri downloads', { path: `${dir}/${fileName}` });
       return `${dir}/${fileName}`;
     } catch (e) {
-      console.error('[saveReceivedFile] Tauri write failed, falling back to browser download:', e);
+      void log.error('[saveReceivedFile] Tauri write failed, falling back to browser download', { fileName, error: String(e) });
       // fall through
     }
   }

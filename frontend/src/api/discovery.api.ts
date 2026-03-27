@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { getApiUrl } from './files.api';
 import { getToken } from '../lib/auth';
+import { log } from '../lib/logger';
 
 export interface DiscoveredServer {
   ip: string;
@@ -19,12 +20,19 @@ export interface DiscoveredServer {
 export async function scanNetwork(): Promise<DiscoveredServer[]> {
   const localApi = getApiUrl();
   const token = getToken();
-  const { data } = await axios.get<DiscoveredServer[]>(
-    `${localApi}/api/discovery/scan`,
-    {
-      timeout: 15000,
-      headers: token ? { 'X-SrvFiles-Token': token } : {},
-    }
-  );
-  return data;
+  void log.debug('[Discovery] starting network scan', { localApi });
+  try {
+    const { data } = await axios.get<DiscoveredServer[]>(
+      `${localApi}/api/discovery/scan`,
+      {
+        timeout: 15000,
+        headers: token ? { 'X-SrvFiles-Token': token } : {},
+      }
+    );
+    void log.info('[Discovery] scan complete', { found: data.length });
+    return data;
+  } catch (err) {
+    void log.error('[Discovery] scan failed', { error: String(err) });
+    throw err;
+  }
 }

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getToken, clearToken } from '../lib/auth';
+import { log } from '../lib/logger';
 
 // ─── Base API URL detection ────────────────────────────────────────
 
@@ -89,9 +90,11 @@ export function createFilesApi(baseUrl: string) {
     (res) => res,
     (err) => {
       if (err.response?.status === 401) {
+        void log.warn('[FilesApi] 401 Unauthorized — clearing token', { url: err.config?.url });
         clearToken();
         return Promise.reject(new AuthError());
       }
+      void log.error('[FilesApi] request failed', { url: err.config?.url, status: err.response?.status, error: String(err) });
       return Promise.reject(err);
     }
   );

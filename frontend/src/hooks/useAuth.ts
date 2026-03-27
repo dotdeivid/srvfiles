@@ -5,6 +5,7 @@ import {
   isLocalOrigin,
   onTokenCleared,
 } from '../lib/auth';
+import { log } from '../lib/logger';
 
 interface UseAuthReturn {
   authenticated: boolean;
@@ -48,6 +49,7 @@ export function useAuth(serverUrl: string): UseAuthReturn {
     if (isLocalOrigin(serverUrl)) {
       // Local server: always fetch the PIN for display in the header.
       // Use localhost explicitly so the backend's loopback-only guard passes.
+      void log.debug('[useAuth] local server detected, fetching PIN', { serverUrl });
       fetch(toPinUrl(serverUrl))
         .then((r) => r.json())
         .then(async ({ pin }: { pin: string }) => {
@@ -56,12 +58,15 @@ export function useAuth(serverUrl: string): UseAuthReturn {
           // haber reiniciado y generado un PIN nuevo, invalidando el token viejo.
           const ok = await authenticate(serverUrl, pin);
           if (ok) {
+            void log.info('[useAuth] auto-authenticated with local server', { serverUrl });
             setAuthenticated(true);
           } else {
+            void log.warn('[useAuth] auto-auth failed, opening PIN dialog', { serverUrl });
             setPinDialogOpen(true);
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          void log.error('[useAuth] failed to fetch PIN from local server', { serverUrl, error: String(err) });
           if (!getToken()) setPinDialogOpen(true);
         });
       return;
@@ -69,11 +74,13 @@ export function useAuth(serverUrl: string): UseAuthReturn {
 
     // Remote server: if we already have a token, skip the auth flow
     if (getToken()) {
+      void log.info('[useAuth] existing token found for remote server', { serverUrl });
       setAuthenticated(true);
       return;
     }
 
     // Remote server: ask the user for the PIN
+    void log.info('[useAuth] remote server — opening PIN dialog', { serverUrl });
     setPinDialogOpen(true);
   }, [serverUrl, toPinUrl]);
 
@@ -83,6 +90,7 @@ export function useAuth(serverUrl: string): UseAuthReturn {
   useEffect(() => {
     return onTokenCleared(() => {
       if (authenticatedRef.current) {
+        void log.warn('[useAuth] token cleared externally — re-opening PIN dialog');
         setAuthenticated(false);
         setPinDialogOpen(true);
       }
@@ -91,11 +99,14 @@ export function useAuth(serverUrl: string): UseAuthReturn {
 
   const submitPin = useCallback(async (pin: string) => {
     setPinError(null);
+    void log.debug('[useAuth] submitting PIN', { serverUrl });
     const ok = await authenticate(serverUrl, pin);
     if (ok) {
+      void log.info('[useAuth] PIN accepted, authenticated', { serverUrl });
       setAuthenticated(true);
       setPinDialogOpen(false);
     } else {
+      void log.warn('[useAuth] wrong PIN submitted', { serverUrl });
       setPinError('PIN incorrecto. Intentá de nuevo.');
     }
   }, [serverUrl]);

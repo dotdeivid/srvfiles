@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import * as filesService from '../services/files.service';
 import { broadcastFilesChanged } from '../services/transfer.service';
+import { log } from '../lib/logger';
 
 /**
  * Controller layer for file endpoints.
@@ -27,13 +28,14 @@ export function uploadFiles(req: Request, res: Response): void {
 
     const uploaded = filesService.processUploadedFiles(files);
 
+    log.info('files.controller.ts', 'Files uploaded', { count: files.length, names: files.map((f) => f.originalname) });
     res.status(200).json({
       message: `${files.length} file(s) uploaded successfully`,
       files: uploaded,
     });
     broadcastFilesChanged();
   } catch (err) {
-    console.error('Upload error:', err);
+    log.error('files.controller.ts', 'Error al subir archivos', { error: String(err) });
     res.status(500).json({ error: 'Failed to upload files' });
   }
 }
@@ -50,7 +52,7 @@ export function listFiles(_req: Request, res: Response): void {
     const files = filesService.listFiles();
     res.status(200).json({ files, count: files.length });
   } catch (err) {
-    console.error('List files error:', err);
+    log.error('files.controller.ts', 'Error al listar archivos', { error: String(err) });
     res.status(500).json({ error: 'Failed to list files' });
   }
 }
@@ -82,14 +84,14 @@ export function downloadFile(req: Request, res: Response): void {
 
     res.download(resolved.filePath, filename, (err) => {
       if (err) {
-        console.error('Download error:', err);
+        log.error('files.controller.ts', 'Error al descargar archivo', { filename, error: String(err) });
         if (!res.headersSent) {
           res.status(500).json({ error: 'Failed to download file' });
         }
       }
     });
   } catch (err) {
-    console.error('Download error:', err);
+    log.error('files.controller.ts', 'Error al descargar archivo', { filename: req.params.filename, error: String(err) });
     res.status(500).json({ error: 'Failed to download file' });
   }
 }
@@ -122,7 +124,7 @@ export function deleteFile(req: Request, res: Response): void {
     res.status(200).json({ message: `File "${filename}" deleted successfully` });
     broadcastFilesChanged();
   } catch (err) {
-    console.error('Delete error:', err);
+    log.error('files.controller.ts', 'Error al eliminar archivo', { filename: req.params.filename, error: String(err) });
     res.status(500).json({ error: 'Failed to delete file' });
   }
 }
@@ -140,7 +142,7 @@ export async function getStats(_req: Request, res: Response): Promise<void> {
     const stats = await filesService.getDiskStats();
     res.status(200).json(stats);
   } catch (err) {
-    console.error('Stats error:', err);
+    log.error('files.controller.ts', 'Error al obtener estadísticas de disco', { error: String(err) });
     res.status(500).json({ error: 'Failed to get disk stats' });
   }
 }

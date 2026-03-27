@@ -1,4 +1,5 @@
 import { getApiUrl } from './files.api';
+import { log } from '../lib/logger';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -77,9 +78,10 @@ export class TransferConnection {
       try {
         const msg = JSON.parse(event.data as string) as ServerMessage;
         if (msg.type === 'welcome') this.clientId = msg.clientId;
+        void log.debug(`[TransferConnection] message received: ${msg.type}`);
         this.handlers.get(msg.type)?.(msg);
-      } catch {
-        // ignore malformed messages
+      } catch (err) {
+        void log.warn('[TransferConnection] malformed WS message ignored', { error: String(err) });
       }
     };
   }
@@ -128,6 +130,8 @@ export class TransferConnection {
   private sendJson(msg: object) {
     if (this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
+    } else {
+      void log.warn('[TransferConnection] sendJson: socket not open', { readyState: this.ws.readyState });
     }
   }
 
@@ -225,6 +229,7 @@ export class TransferConnection {
    * @returns A promise that resolves once all chunks have been sent.
    */
   async sendFile(transferId: string, file: File, onProgress?: (pct: number) => void) {
+    void log.info('[TransferConnection] sendFile started', { transferId, fileName: file.name, fileSize: file.size });
     const encoder = new TextEncoder();
     const idBytes = encoder.encode(transferId.padEnd(36, ' ').slice(0, 36));
     let offset = 0;
@@ -241,6 +246,7 @@ export class TransferConnection {
       await new Promise((r) => setTimeout(r, 0));
     }
     this.sendJson({ type: 'send-complete', transferId });
+    void log.info('[TransferConnection] sendFile complete', { transferId });
   }
 
   /**

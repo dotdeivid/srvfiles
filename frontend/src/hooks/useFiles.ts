@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { createFilesApi, getApiUrl, type FileInfo, type DiskStats, type AppConfig } from '../api/files.api';
+import { log } from '../lib/logger';
 
 // ─── Hook return type ───────────────────────────────────────────────
 interface UseFilesReturn {
@@ -51,11 +52,12 @@ export function useFiles(serverUrl?: string | null): UseFilesReturn {
     try {
       setError(null);
       const data = await api.getFiles();
+      void log.debug('[useFiles] file list fetched', { count: data.files.length });
       setFiles(data.files);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch files';
       setError(message);
-      console.error('Fetch files error:', err);
+      void log.error('[useFiles] fetch files failed', { error: String(err) });
     }
   }, [api]);
 
@@ -70,7 +72,7 @@ export function useFiles(serverUrl?: string | null): UseFilesReturn {
       const data = await api.getStats();
       setStats(data);
     } catch (err) {
-      console.error('Fetch stats error:', err);
+      void log.warn('[useFiles] fetch disk stats failed', { error: String(err) });
     }
   }, [api]);
 
@@ -83,9 +85,10 @@ export function useFiles(serverUrl?: string | null): UseFilesReturn {
   const fetchConfig = useCallback(async () => {
     try {
       const data = await api.getConfig();
+      void log.debug('[useFiles] config fetched', { appName: data.appName, lanIp: data.lanIp });
       setConfig(data);
     } catch (err) {
-      console.error('Fetch config error:', err);
+      void log.warn('[useFiles] fetch config failed', { error: String(err) });
     }
   }, [api]);
 
@@ -99,6 +102,7 @@ export function useFiles(serverUrl?: string | null): UseFilesReturn {
    * @returns `true` if all files were uploaded successfully, `false` on error.
    */
   const uploadFile = useCallback(async (filesToUpload: File[]): Promise<boolean> => {
+    void log.info('[useFiles] uploading files', { count: filesToUpload.length, names: filesToUpload.map((f) => f.name) });
     try {
       setUploading(true);
       setUploadProgress(0);
@@ -108,12 +112,13 @@ export function useFiles(serverUrl?: string | null): UseFilesReturn {
         setUploadProgress(progress);
       });
 
+      void log.info('[useFiles] upload complete');
       await Promise.all([fetchFileList(), fetchDiskStats()]);
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to upload files';
       setError(message);
-      console.error('Upload error:', err);
+      void log.error('[useFiles] upload failed', { error: String(err) });
       return false;
     } finally {
       setUploading(false);
@@ -131,15 +136,17 @@ export function useFiles(serverUrl?: string | null): UseFilesReturn {
    * @returns `true` if the file was deleted, `false` on error.
    */
   const removeFile = useCallback(async (filename: string): Promise<boolean> => {
+    void log.info('[useFiles] deleting file', { filename });
     try {
       setError(null);
       await api.deleteFile(filename);
+      void log.info('[useFiles] file deleted', { filename });
       await Promise.all([fetchFileList(), fetchDiskStats()]);
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete file';
       setError(message);
-      console.error('Delete error:', err);
+      void log.error('[useFiles] delete failed', { filename, error: String(err) });
       return false;
     }
   }, [api, fetchFileList, fetchDiskStats]);

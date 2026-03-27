@@ -1,3 +1,5 @@
+import { log } from './logger';
+
 // ─── Session token (in-memory via sessionStorage) ───────────────────
 // Token is tied to the browser tab — cleared when the tab closes.
 // This is intentional: if the server restarts (new PIN), old tokens are invalid.
@@ -15,6 +17,7 @@ export function setToken(token: string): void {
 const TOKEN_CLEARED = 'srvfiles:token-cleared';
 
 export function clearToken(): void {
+  void log.info('[auth] session token cleared');
   sessionStorage.removeItem(TOKEN_KEY);
   window.dispatchEvent(new CustomEvent(TOKEN_CLEARED));
 }
@@ -37,11 +40,16 @@ export async function authenticate(baseUrl: string, pin: string): Promise<boolea
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin }),
     });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      void log.warn('[auth] authenticate failed', { baseUrl, status: res.status });
+      return false;
+    }
     const { token } = await res.json();
     setToken(token);
+    void log.info('[auth] authenticated successfully', { baseUrl });
     return true;
-  } catch {
+  } catch (err) {
+    void log.error('[auth] authenticate error', { baseUrl, error: String(err) });
     return false;
   }
 }
@@ -52,12 +60,17 @@ export async function authenticate(baseUrl: string, pin: string): Promise<boolea
  */
 export async function autoAuthenticate(baseUrl: string): Promise<boolean> {
   if (!isLocalOrigin(baseUrl)) return false;
+  void log.debug('[auth] attempting auto-authenticate', { baseUrl });
   try {
     const res = await fetch(`${baseUrl}/api/pin`);
-    if (!res.ok) return false;
+    if (!res.ok) {
+      void log.warn('[auth] auto-authenticate: PIN endpoint returned error', { status: res.status });
+      return false;
+    }
     const { pin } = await res.json();
     return authenticate(baseUrl, pin);
-  } catch {
+  } catch (err) {
+    void log.error('[auth] auto-authenticate error', { baseUrl, error: String(err) });
     return false;
   }
 }

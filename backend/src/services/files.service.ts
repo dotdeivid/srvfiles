@@ -4,6 +4,7 @@ import checkDiskSpace from 'check-disk-space';
 import { UPLOADS_DIR } from '../middleware/upload';
 import { sanitizeFilename } from '../utils/sanitize';
 import type { FileInfo, UploadedFileInfo, DiskStats } from '../types';
+import { log } from '../lib/logger';
 
 /**
  * Service layer for file operations.
@@ -73,9 +74,13 @@ export function resolveFilePath(filename: string): { filePath: string; exists: b
  */
 export function deleteFile(filename: string): boolean {
   const { filePath, exists } = resolveFilePath(filename);
-  if (!exists) return false;
+  if (!exists) {
+    log.warn('files.service.ts', 'Delete requested for non-existent file', { filename });
+    return false;
+  }
 
   fs.unlinkSync(filePath);
+  log.info('files.service.ts', 'File deleted', { filename });
   return true;
 }
 
@@ -85,10 +90,15 @@ export function deleteFile(filename: string): boolean {
  * @returns A promise resolving to {@link DiskStats} with `total`, `used`, and `free` in bytes.
  */
 export async function getDiskStats(): Promise<DiskStats> {
-  const diskSpace = await checkDiskSpace(UPLOADS_DIR);
-  return {
-    total: diskSpace.size,
-    free: diskSpace.free,
-    used: diskSpace.size - diskSpace.free,
-  };
+  try {
+    const diskSpace = await checkDiskSpace(UPLOADS_DIR);
+    return {
+      total: diskSpace.size,
+      free: diskSpace.free,
+      used: diskSpace.size - diskSpace.free,
+    };
+  } catch (err) {
+    log.error('files.service.ts', 'Failed to get disk stats', { error: String(err) });
+    throw err;
+  }
 }

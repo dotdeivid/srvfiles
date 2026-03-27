@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
+import { log } from '../lib/logger';
 
 // ─── PIN state (in-memory, cleared on every server restart) ─────────
 
@@ -65,6 +66,9 @@ export function recordFailedAttempt(ip: string): void {
   entry.count += 1;
   if (entry.count >= MAX_ATTEMPTS) {
     entry.blockedUntil = Date.now() + BLOCK_MS;
+    log.warn('auth.ts', 'IP blocked due to too many failed PIN attempts', { ip, attempts: entry.count });
+  } else {
+    log.warn('auth.ts', 'Failed PIN attempt recorded', { ip, count: entry.count });
   }
   rateLimitMap.set(ip, entry);
 }
@@ -90,6 +94,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   if (validateToken(token)) {
     next();
   } else {
+    const ip = (req.socket.remoteAddress ?? '').replace('::ffff:', '');
+    log.warn('auth.ts', 'Unauthorized request — invalid or missing token', { ip, path: req.path });
     res.status(401).json({ error: 'Unauthorized' });
   }
 }

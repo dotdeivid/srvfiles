@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { scanNetwork } from '../services/discovery.service';
+import { log } from '../lib/logger';
 
 /**
  * Handles `GET /api/discovery/scan`.
@@ -12,6 +13,11 @@ import { scanNetwork } from '../services/discovery.service';
  *              external network interface.
  */
 export async function scan(_req: Request, res: Response): Promise<void> {
-  const servers = await scanNetwork();
-  res.json(servers);
+  try {
+    const servers = await scanNetwork();
+    res.json(servers);
+  } catch (err) {
+    log.error('discovery.controller.ts', 'Network scan failed', { error: String(err) });
+    res.status(500).json({ error: 'Network scan failed' });
+  }
 }

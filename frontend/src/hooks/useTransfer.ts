@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { TransferConnection, type TransferClient, type IncomingTransferRequest } from '../api/transfer.api';
 import { isTauriApp } from './useDownloadDir';
 import { getToken } from '../lib/auth';
+import { log } from '../lib/logger';
 
 // crypto.randomUUID no está disponible en contextos no-HTTPS (HTTP sobre LAN)
 function generateUUID(): string {
@@ -78,28 +79,28 @@ export function useTransfer(
 
     conn.ws.onopen = () => {
       const token = getToken();
-      console.log('[Transfer] WS abierto, token:', token ? 'sí' : 'no');
+      void log.info('[useTransfer] WS connected', { serverUrl, hasToken: !!token });
       if (token) {
         conn.auth(token);
         // register() and setReceiving() are called on auth_ok below
       } else {
-        // No token yet — connection will stay open until auth_ok or be closed by server
+        void log.warn('[useTransfer] WS opened but no token available yet');
       }
     };
 
     conn.on('auth_ok', () => {
-      console.log('[Transfer] auth_ok → registrando como', appNameRef.current);
+      void log.info('[useTransfer] auth_ok — registering', { appName: appNameRef.current, isServer: isTauriApp() });
       conn.register(appNameRef.current, isTauriApp());
       conn.setReceiving(true);
     });
 
     conn.on('welcome', (msg) => {
-      console.log('[Transfer] welcome, clientId:', msg.clientId);
+      void log.info('[useTransfer] welcome received', { clientId: msg.clientId });
       setMyClientId(msg.clientId);
     });
 
     conn.on('clients', (msg) => {
-      console.log('[Transfer] clients update:', msg.clients.map((c: TransferClient) => `${c.appName}(${c.clientId})`).join(', '));
+      void log.debug('[useTransfer] clients update', { clients: msg.clients.map((c: TransferClient) => c.appName) });
       setOnlineClients(msg.clients);
     });
 
@@ -108,24 +109,27 @@ export function useTransfer(
     });
 
     conn.on('send-request', (msg) => {
-      console.log('[Transfer] send-request recibido de', msg.fromName);
+      void log.info('[useTransfer] incoming transfer request', { from: msg.fromName, fileName: msg.fileName, fileSize: msg.fileSize });
       setIncomingRequest(msg);
     });
 
     conn.on('send-accept', async (msg) => {
       const pending = pendingSendRef.current;
       if (!pending || pending.transferId !== msg.transferId) return;
+      void log.info('[useTransfer] transfer accepted, starting file send', { transferId: msg.transferId });
       // Mark as active (not waiting anymore)
       setActiveTransfer((prev) => prev ? { ...prev, waiting: false } : null);
       await conn.sendFile(pending.transferId, pending.file, (pct) => {
         setActiveTransfer((prev) => prev ? { ...prev, progress: pct } : null);
       });
+      void log.info('[useTransfer] file send finished', { transferId: msg.transferId });
       pendingSendRef.current = null;
       setActiveTransfer(null);
     });
 
     conn.on('send-reject', (msg) => {
       if (pendingSendRef.current?.transferId === msg.transferId) {
+        void log.warn('[useTransfer] transfer rejected by peer', { transferId: msg.transferId });
         pendingSendRef.current = null;
         setActiveTransfer(null);
         onSendRejectedRef.current?.();
@@ -145,6 +149,7 @@ export function useTransfer(
     conn.on('send-complete', (msg) => {
       const buf = receiveBuffers.current.get(msg.transferId);
       if (!buf) return;
+      void log.info('[useTransfer] file receive complete', { transferId: msg.transferId, fileName: buf.fileName });
       const blob = new Blob(buf.chunks, { type: buf.mimeType || 'application/octet-stream' });
       onFileReceivedRef.current(buf.fileName, buf.mimeType, blob);
       receiveBuffers.current.delete(msg.transferId);
@@ -162,8 +167,12 @@ export function useTransfer(
       setActiveTransfer((prev) => prev ? { ...prev, progress } : null);
     });
 
-    conn.ws.onerror = (e) => console.warn('[Transfer] WebSocket error', e);
-    conn.ws.onclose = (e) => console.log('[Transfer] WS cerrado, código:', e.code, e.reason);
+    conn.ws.onerror = (e) => {
+      void log.warn('[useTransfer] WebSocket error', { event: String(e) });
+    };
+    conn.ws.onclose = (e) => {
+      void log.info('[useTransfer] WS closed', { code: e.code, reason: e.reason });
+    };
 
     return () => {
       conn.close();
@@ -198,9 +207,9 @@ export function useTransfer(
    */
   const sendFileTo = useCallback((toClientId: string, file: File, peerName: string) => {
     const conn = connRef.current;
-    if (!conn) { console.warn('[Transfer] sendFileTo: sin conexión'); return; }
+    if (!conn) { void log.warn('[useTransfer] sendFileTo: no connection available'); return; }
     const transferId = generateUUID();
-    console.log('[Transfer] enviando a', peerName, '(', toClientId, ') archivo:', file.name, 'transferId:', transferId);
+    void log.info('[useTransfer] initiating send', { to: peerName, toClientId, fileName: file.name, transferId });
     pendingSendRef.current = { transferId, file, peerId: toClientId };
     setActiveTransfer({
       transferId,
@@ -224,6 +233,7 @@ export function useTransfer(
     const req = incomingRequest;
     const conn = connRef.current;
     if (!req || !conn) return;
+    void log.info('[useTransfer] accepting incoming transfer', { transferId: req.transferId, from: req.fromName });
     receiveBuffers.current.set(req.transferId, {
       chunks: [],
       received: 0,
@@ -253,6 +263,7 @@ export function useTransfer(
     const req = incomingRequest;
     const conn = connRef.current;
     if (!req || !conn) return;
+    void log.info('[useTransfer] rejecting incoming transfer', { transferId: req.transferId, from: req.fromName });
     conn.reject(req.transferId);
     setIncomingRequest(null);
   }, [incomingRequest]);
@@ -265,6 +276,7 @@ export function useTransfer(
     const transfer = activeTransfer;
     const conn = connRef.current;
     if (!transfer || !conn) return;
+    void log.info('[useTransfer] cancelling transfer', { transferId: transfer.transferId, direction: transfer.direction });
     conn.cancel(transfer.transferId);
     receiveBuffers.current.delete(transfer.transferId);
     pendingSendRef.current = null;

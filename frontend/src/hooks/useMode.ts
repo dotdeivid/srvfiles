@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { scanNetwork, type DiscoveredServer } from '../api/discovery.api';
 import { getApiUrl } from '../api/files.api';
 import { isTauriApp } from './useDownloadDir';
+import { log } from '../lib/logger';
 
 const LOCALHOST = 'http://localhost:3001';
 
@@ -45,6 +46,7 @@ export function useMode() {
     async function autoConnect() {
       // Tauri: always its own server — no scan needed
       if (isTauriApp()) {
+        void log.info('[useMode] Tauri context detected, connecting to localhost');
         if (!cancelled) {
           setServerUrl(LOCALHOST);
           setConnecting(false);
@@ -54,27 +56,33 @@ export function useMode() {
 
       // Browser accessing a remote server: already there, skip scan
       if (!isLocalContext()) {
+        const url = normalize(getApiUrl());
+        void log.info('[useMode] remote browser context, using current origin', { url });
         if (!cancelled) {
-          setServerUrl(normalize(getApiUrl()));
+          setServerUrl(url);
           setConnecting(false);
         }
         return;
       }
 
       // localhost in browser (dev mode): scan to find the backend
+      void log.info('[useMode] localhost browser context, scanning for backend');
       let servers: DiscoveredServer[] = [];
       for (let attempt = 0; attempt < 6; attempt++) {
         try {
           servers = await scanNetwork();
           break;
-        } catch {
+        } catch (err) {
+          void log.warn('[useMode] scan attempt failed', { attempt, error: String(err) });
           await new Promise((r) => setTimeout(r, 500));
         }
       }
 
       if (cancelled) return;
 
-      setServerUrl(normalize(servers.length > 0 ? servers[0].url : LOCALHOST));
+      const chosen = normalize(servers.length > 0 ? servers[0].url : LOCALHOST);
+      void log.info('[useMode] server resolved', { url: chosen, discovered: servers.length });
+      setServerUrl(chosen);
       setConnecting(false);
     }
 

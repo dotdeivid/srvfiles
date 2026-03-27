@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Toaster, toast } from 'sonner';
 import { useFiles } from './hooks/useFiles';
 import { useMode } from './hooks/useMode';
@@ -16,6 +16,7 @@ import { IncomingTransferModal } from './components/IncomingTransferModal';
 import { NameModal } from './components/NameModal';
 import { ServerSwitcherModal } from './components/ServerSwitcherModal';
 import { PinDialog } from './components/PinDialog';
+import { log } from './lib/logger';
 
 // ─── Root: handles auto-connect + splash ──────────────────────────
 function App() {
@@ -52,6 +53,18 @@ interface FileAppProps {
 }
 
 function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
+  const prevServerUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevServerUrlRef.current !== serverUrl) {
+      if (prevServerUrlRef.current !== null) {
+        void log.info('[App] server URL changed', { from: prevServerUrlRef.current, to: serverUrl });
+      } else {
+        void log.info('[App] connected to server', { serverUrl });
+      }
+      prevServerUrlRef.current = serverUrl;
+    }
+  }, [serverUrl]);
+
   const { authenticated, pinDialogOpen, pinError, serverPin, submitPin } = useAuth(serverUrl);
 
   const {
@@ -82,6 +95,7 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
 
   const handleFileReceived = useCallback(
     async (fileName: string, _mimeType: string, blob: Blob) => {
+      void log.info('[App] file received via transfer', { fileName, size: blob.size });
       const savedPath = await saveReceivedFile(fileName, blob);
       toast.success(
         savedPath
@@ -142,10 +156,12 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
   const handleConfirmDelete = useCallback(async () => {
     if (!pendingDelete) return;
     setConfirmOpen(false);
+    void log.info('[App] confirming delete', { filename: pendingDelete });
     const success = await remove(pendingDelete);
     if (success) {
       toast.success(`"${pendingDelete}" eliminado`);
     } else {
+      void log.error('[App] delete failed for file', { filename: pendingDelete });
       toast.error(`Error al eliminar "${pendingDelete}"`);
     }
     setPendingDelete(null);
