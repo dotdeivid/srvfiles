@@ -83,11 +83,17 @@ export function downloadFile(req: Request, res: Response): void {
     }
 
     res.download(resolved.filePath, filename, (err) => {
-      if (err) {
-        log.error('files.controller.ts', 'Error al descargar archivo', { filename, error: String(err) });
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Failed to download file' });
-        }
+      if (!err) return;
+      // EPIPE / ECONNRESET / "Request aborted" = client disconnected mid-download; not an error.
+      const code = (err as NodeJS.ErrnoException).code ?? '';
+      const msg = err.message ?? '';
+      if (code === 'EPIPE' || code === 'ECONNRESET' || msg.includes('aborted') || msg.includes('abort')) {
+        log.debug('files.controller.ts', 'Download interrupted by client', { filename });
+        return;
+      }
+      log.error('files.controller.ts', 'Error al descargar archivo', { filename, error: String(err) });
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to download file' });
       }
     });
   } catch (err) {
