@@ -1,22 +1,23 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Toaster, toast } from 'sonner';
-import { useFiles } from './hooks/useFiles';
-import { useMode } from './hooks/useMode';
-import { useTransfer } from './hooks/useTransfer';
-import { useDeviceName } from './hooks/useDeviceName';
-import { useAuth } from './hooks/useAuth';
-import { saveReceivedFile, isTauriApp } from './hooks/useDownloadDir';
-import { DropZone } from './components/DropZone';
-import { FileList } from './components/FileList';
-import { DiskStats } from './components/DiskStats';
-import { QRFooter } from './components/QRFooter';
-import { ConfirmModal } from './components/ConfirmModal';
-import { OnlineClients } from './components/OnlineClients';
-import { IncomingTransferModal } from './components/IncomingTransferModal';
-import { NameModal } from './components/NameModal';
-import { ServerSwitcherModal } from './components/ServerSwitcherModal';
-import { PinDialog } from './components/PinDialog';
+import { useFiles } from './features/files/useFiles';
+import { useMode } from './features/server/useMode';
+import { useTransfer } from './features/transfer/useTransfer';
+import { useDeviceName } from './shared/hooks/useDeviceName';
+import { useAuth } from './features/auth/useAuth';
+import { saveReceivedFile, isTauriApp } from './lib/tauri';
+import { DropZone } from './features/files/DropZone';
+import { FileList } from './features/files/FileList';
+import { DiskStats } from './features/files/DiskStats';
+import { QRFooter } from './shared/components/QRFooter';
+import { ConfirmModal } from './shared/components/ConfirmModal';
+import { OnlineClients } from './features/transfer/OnlineClients';
+import { IncomingTransferModal } from './features/transfer/IncomingTransferModal';
+import { NameModal } from './shared/components/NameModal';
+import { ServerSwitcherModal } from './features/server/ServerSwitcherModal';
+import { PinDialog } from './features/auth/PinDialog';
 import { log } from './lib/logger';
+import { Server, Lock, ChevronDown, User } from 'lucide-react';
 
 // ─── Root: handles auto-connect + splash ──────────────────────────
 function App() {
@@ -49,7 +50,7 @@ function ConnectingScreen() {
 interface FileAppProps {
   serverUrl: string;
   onConnect: (url: string) => void;
-  onRescan: () => Promise<import('./api/discovery.api').DiscoveredServer[]>;
+  onRescan: () => Promise<import('./features/server/discovery.api').DiscoveredServer[]>;
 }
 
 function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
@@ -262,25 +263,15 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
             onClick={() => setSwitcherOpen(true)}
             title="Ver y cambiar servidor SrvFiles"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-              <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-              <line x1="6" y1="6" x2="6.01" y2="6" />
-              <line x1="6" y1="18" x2="6.01" y2="18" />
-            </svg>
+            <Server size={13} />
             <span>Servidor</span>
             {serverPin && (
               <>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
+                <Lock size={12} style={{ opacity: 0.6 }} />
                 <span>{serverPin}</span>
               </>
             )}
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
+            <ChevronDown size={11} strokeWidth={2.5} />
           </button>
 
           <button
@@ -288,10 +279,7 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
             onClick={() => setRenameOpen(true)}
             title="Cambiar nombre del dispositivo"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-            </svg>
+            <User size={12} />
             <span>{deviceName}</span>
           </button>
         </div>

@@ -6,7 +6,7 @@ import {
   authenticate,
   autoAuthenticate,
   isLocalOrigin,
-} from './auth';
+} from '../features/auth/auth.service';
 
 // ─── sessionStorage is provided by jsdom ─────────────────────────────────────
 

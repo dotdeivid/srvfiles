@@ -1,4 +1,4 @@
-import { isTauriApp } from '../hooks/useDownloadDir';
+import { isTauriApp } from './tauri';
 
 type Meta = Record<string, unknown>;
 
