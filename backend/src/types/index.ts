@@ -28,7 +28,9 @@ export interface AppConfig {
   appName: string;
   lanIp: string;
   port: number;
+  httpsPort: number;
   frontendPort: number;
   maxFileSizeMb: number;
+  previewMaxFileSizeMb: number;
   lanUrl: string;
 }

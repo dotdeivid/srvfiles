@@ -73,51 +73,48 @@ Lee el directorio de uploads y devuelve los metadatos de todos los archivos, ord
 
 ```ts
 export function downloadFile(req: Request, res: Response): void {
-  try {
-    const filename = req.params.filename as string;
-
-    let resolved;
-    try {
-      resolved = filesService.resolveFilePath(filename);
-    } catch {
-      res.status(400).json({ error: 'Invalid filename' });
+  // ...
+  res.download(resolved.filePath, filename, (err) => {
+    if (!err) return;
+    const code = (err as NodeJS.ErrnoException).code ?? '';
+    const msg = err.message ?? '';
+    if (code === 'EPIPE' || code === 'ECONNRESET' || msg.includes('aborted')) {
+      log.debug('files.controller.ts', 'Download interrupted by client', { filename });
       return;
     }
-
-    if (!resolved.exists) {
-      res.status(404).json({ error: 'File not found' });
-      return;
-    }
-
-    res.download(resolved.filePath, filename, (err) => {
-      if (err) {
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Failed to download file' });
-        }
-      }
-    });
-  } catch (err) {
-    console.error('Download error:', err);
-    res.status(500).json({ error: 'Failed to download file' });
-  }
+    log.error('files.controller.ts', 'Error al descargar archivo', { filename, error: String(err) });
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to download file' });
+  });
 }
 ```
 
-### Dos bloques `try/catch` anidados
-
-El `try/catch` interno envuelve `resolveFilePath` que puede lanzar un error si el nombre tiene path traversal. Se captura específicamente para responder `400` (petición inválida del cliente), que es distinto de un error del servidor (`500`).
-
 ### `res.download(filePath, filename, callback)`
 
-Método de Express que:
-1. Lee el archivo desde `filePath`.
-2. Pone el header `Content-Disposition: attachment; filename="..."` para que el navegador lo descargue.
-3. Transmite el archivo en stream (no lo carga todo en memoria).
-4. Llama al callback cuando termina o si hay un error.
+Pone `Content-Disposition: attachment` y transmite el archivo en stream. El cliente recibe el archivo como descarga forzada.
 
-### `!res.headersSent`
+### Manejo de EPIPE / ECONNRESET
 
-Si `res.download` empezó a enviar el archivo y luego falla, los headers ya fueron enviados. Intentar enviar `res.status(500).json(...)` después lanzaría otro error. La verificación evita eso.
+Cuando el usuario cancela una descarga, el sistema operativo cierra el socket y Node.js reporta `EPIPE` o `ECONNRESET`. No son errores reales — se loguean en `debug` y se ignoran. Solo los errores inesperados escalan a `error`.
+
+---
+
+## Función `previewFile`
+
+```ts
+export function previewFile(req: Request, res: Response): void {
+  // ...
+  res.sendFile(resolved.filePath, (err) => { /* igual que download */ });
+}
+```
+
+Variante de `downloadFile` que usa `res.sendFile()` en lugar de `res.download()`. La diferencia clave:
+
+| Función | Header `Content-Disposition` | Efecto en el navegador |
+|---------|------------------------------|------------------------|
+| `res.download()` | `attachment` | Descarga forzada |
+| `res.sendFile()` | ninguno | El browser decide (inline para PDF, video, audio, etc.) |
+
+Lo usan los previsualizadores web y Tauri para embeber el archivo en `<iframe>`, `<video>` y `<audio>` sin que el navegador lo descargue.
 
 ---
 
@@ -179,3 +176,9 @@ Es `async` porque `getDiskStats` es asíncrona (usa la librería `check-disk-spa
 | `400` | Bad Request | El cliente envió datos inválidos (nombre con path traversal, sin archivos) |
 | `404` | Not Found | El archivo solicitado no existe |
 | `500` | Internal Server Error | Error inesperado del servidor |
+
+---
+
+## Logging
+
+Todas las funciones usan `log` (de `../lib/logger`) en lugar de `console.*`. Esto garantiza salida estructurada con nivel, timestamp y contexto. Los errores de cliente/red (EPIPE, ECONNRESET, abortos) se loguean en `debug`, no en `error`, para no contaminar los logs con eventos normales.

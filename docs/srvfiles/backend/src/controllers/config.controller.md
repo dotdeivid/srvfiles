@@ -16,6 +16,7 @@ export function getConfig(_req: Request, res: Response): void {
     port: PORT,
     frontendPort: FRONTEND_PORT,
     maxFileSizeMb: MAX_FILE_SIZE_MB,
+    previewMaxFileSizeMb: PREVIEW_MAX_FILE_SIZE_MB,
     lanUrl: `http://${lanIp}`,
   };
   res.json(config);
@@ -42,5 +43,6 @@ Anotar la constante con el tipo garantiza que si se agrega o elimina un campo de
 | `lanIp` | IP privada actual | QR, chip del header, backendLanUrl |
 | `port` | 3001 (backend) | Construir `backendLanUrl` |
 | `frontendPort` | 5173 (Vite dev) | Construir URL del QR en dev |
-| `maxFileSizeMb` | 2048 por defecto | Hint en el DropZone |
+| `maxFileSizeMb` | 10240 por defecto | Hint en el DropZone |
+| `previewMaxFileSizeMb` | 1024 por defecto | Límite de tamaño para el botón "ver" en web y mobile |
 | `lanUrl` | `http://{lanIp}` | URL base sin puerto |

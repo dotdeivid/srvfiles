@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { APP_NAME, PORT, FRONTEND_PORT, MAX_FILE_SIZE_MB, getLanIp } from '../config';
+import { APP_NAME, PORT, HTTPS_PORT, FRONTEND_PORT, MAX_FILE_SIZE_MB, PREVIEW_MAX_FILE_SIZE_MB, getLanIp } from '../config';
 import type { AppConfig } from '../types';
 
 /**
@@ -17,8 +17,10 @@ export function getConfig(_req: Request, res: Response): void {
     appName: APP_NAME,
     lanIp,
     port: PORT,
+    httpsPort: HTTPS_PORT,
     frontendPort: FRONTEND_PORT,
     maxFileSizeMb: MAX_FILE_SIZE_MB,
+    previewMaxFileSizeMb: PREVIEW_MAX_FILE_SIZE_MB,
     lanUrl: `http://${lanIp}`,
   };
   res.json(config);

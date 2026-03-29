@@ -63,7 +63,7 @@ export class SessionCipher {
 }
 
 export async function generateEcdhKeyPair(): Promise<CryptoKeyPair> {
-  return crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveKey']);
+  return crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveKey', 'deriveBits']);
 }
 
 export async function exportPublicKey(key: CryptoKey): Promise<string> {

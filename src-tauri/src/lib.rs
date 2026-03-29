@@ -49,7 +49,10 @@ pub fn run() {
                 let uploads_dir = app_data_dir.join("uploads");
                 std::fs::create_dir_all(&uploads_dir).ok();
 
-                log::info!("Spawning sidecar, uploads dir: {:?}", uploads_dir);
+                let certs_dir = app_data_dir.join("certs");
+                std::fs::create_dir_all(&certs_dir).ok();
+
+                log::info!("Spawning sidecar, uploads dir: {:?}, certs dir: {:?}", uploads_dir, certs_dir);
 
                 _app.shell()
                     .sidecar("srvfiles-sidecar")
@@ -58,6 +61,10 @@ pub fn run() {
                     .env(
                         "UPLOADS_DIR",
                         uploads_dir.to_str().expect("uploads path is not valid UTF-8"),
+                    )
+                    .env(
+                        "CERTS_DIR",
+                        certs_dir.to_str().expect("certs path is not valid UTF-8"),
                     )
                     .spawn()
                     .expect("failed to spawn sidecar");

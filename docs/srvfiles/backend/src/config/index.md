@@ -36,12 +36,14 @@ export const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT || '5173', 10);
 ### Archivos
 
 ```ts
-export const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB || '2048', 10);
+export const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB || '10240', 10);
 export const MAX_UPLOAD_COUNT = parseInt(process.env.MAX_UPLOAD_COUNT || '50', 10);
+export const PREVIEW_MAX_FILE_SIZE_MB = parseInt(process.env.PREVIEW_MAX_FILE_SIZE_MB || '1024', 10);
 ```
 
-- **`MAX_FILE_SIZE_MB`**: límite de tamaño por archivo en MB. Por defecto: 2 GB. Se pasa a Multer.
+- **`MAX_FILE_SIZE_MB`**: límite de tamaño por archivo en MB. Por defecto: 10 GB. Se pasa a Multer.
 - **`MAX_UPLOAD_COUNT`**: máximo de archivos simultáneos por petición. Por defecto: 50.
+- **`PREVIEW_MAX_FILE_SIZE_MB`**: límite de tamaño para previsualización en MB. Por defecto: 1 GB. Archivos más grandes no pueden previsualizarse; el botón "ver" los rechaza con un toast. Se expone en `/api/config` para que web y mobile lo lean.
 
 ---
 

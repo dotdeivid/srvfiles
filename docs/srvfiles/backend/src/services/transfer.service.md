@@ -274,3 +274,22 @@ Remitente              Servidor relay              Receptor
     |-- send-complete ----→ |                          |
     |                       |-- send-complete -------→ |
 ```
+
+---
+
+## Cifrado E2E por sesión (ECDH P-256 + AES-256-GCM)
+
+El relay también facilita el intercambio de claves para cifrado de extremo a extremo. El servidor **no** puede descifrar el contenido — solo retransmite.
+
+```
+Cliente                       Backend (ws/session.ts)
+    |                                   |
+    |-- key-exchange (pubKeyB64) -----→ |  [genera par ECDH efímero]
+    |                                   |  [deriva AES-256-GCM vía HKDF]
+    | ←-- key-exchange (serverPubKey) --|
+    |  [cliente deriva misma clave]     |
+    |                                   |
+    |  ← canal AES-256-GCM activo →     |
+```
+
+Cada chunk cifrado llega como `{ type: 'encrypted', iv: string, data: string }` (base64). La sesión en `ws/session.ts` maneja el estado de la clave derivada. Si el cliente no soporta `crypto.subtle` (HTTP sin HTTPS), el cifrado no se activa y la transferencia ocurre en texto plano a través del relay.

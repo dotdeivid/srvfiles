@@ -173,7 +173,11 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
   }, []);
 
   // ─── Web URL chip ─────────────────────────────────────────────
-  const webUrl = config?.lanIp ? `http://${config.lanIp}:${config.frontendPort ?? config.port}` : null;
+  // HTTPS URL — shown to the user and used in the QR / copy action.
+  // External browsers need the HTTPS port to get a secure context.
+  const webUrl = config?.lanIp && config?.httpsPort
+    ? `https://${config.lanIp}:${config.httpsPort}`
+    : null;
   // URL del backend con IP LAN real (para mostrar en el modal, evita "localhost")
   const backendLanUrl = config?.lanIp ? `http://${config.lanIp}:${config.port}` : serverUrl;
 
@@ -333,6 +337,7 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
             onRequestDelete={handleRequestDelete}
             getDownloadUrl={getDownloadUrl}
             canDelete={true}
+            previewMaxMb={config?.previewMaxFileSizeMb}
           />
         </main>
 

@@ -103,6 +103,51 @@ export function downloadFile(req: Request, res: Response): void {
 }
 
 /**
+ * Handles `GET /api/files/preview/:filename`.
+ * Streams the requested file inline (no Content-Disposition: attachment),
+ * allowing browsers to render PDFs, videos, audio, etc. in-place.
+ *
+ * @param req - Express request. `req.params.filename` is the URL-decoded filename.
+ * @param res - Express response. Sends the file inline on success, `400` for an invalid
+ *              filename, `404` if not found, or `500` on error.
+ */
+export function previewFile(req: Request, res: Response): void {
+  try {
+    const filename = req.params.filename as string;
+
+    let resolved;
+    try {
+      resolved = filesService.resolveFilePath(filename);
+    } catch {
+      res.status(400).json({ error: 'Invalid filename' });
+      return;
+    }
+
+    if (!resolved.exists) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
+    res.sendFile(resolved.filePath, (err) => {
+      if (!err) return;
+      const code = (err as NodeJS.ErrnoException).code ?? '';
+      const msg = err.message ?? '';
+      if (code === 'EPIPE' || code === 'ECONNRESET' || msg.includes('aborted') || msg.includes('abort')) {
+        log.debug('files.controller.ts', 'Preview interrupted by client', { filename });
+        return;
+      }
+      log.error('files.controller.ts', 'Error al previsualizar archivo', { filename, error: String(err) });
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to preview file' });
+      }
+    });
+  } catch (err) {
+    log.error('files.controller.ts', 'Error al previsualizar archivo', { filename: req.params.filename, error: String(err) });
+    res.status(500).json({ error: 'Failed to preview file' });
+  }
+}
+
+/**
  * Handles `DELETE /api/files/:filename`.
  * Permanently removes a file from the uploads directory.
  *

@@ -67,7 +67,7 @@ export class WsSession {
     const serverKeyPair = await subtle.generateKey(
       { name: 'ECDH', namedCurve: 'P-256' },
       false,
-      ['deriveKey'],
+      ['deriveKey', 'deriveBits'],
     );
 
     const clientPublicKey = await subtle.importKey(

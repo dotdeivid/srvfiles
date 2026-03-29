@@ -6,24 +6,21 @@ interface QRFooterProps {
 }
 
 /**
- * Footer component displaying a QR code pointing to the LAN URL.
- * Uses the backend's reported LAN IP so the QR works from any device.
+ * Footer component displaying a QR code pointing to the HTTPS LAN URL.
+ * Uses httpsPort from config so browsers get a secure context (crypto.subtle available).
  */
 export function QRFooter({ config }: QRFooterProps) {
-  // Build the LAN URL for the frontend using the server's private IP.
-  // In production builds (Tauri or npm start), the frontend is served by Express
-  // on the backend port (3001), so other devices should use that port.
-  // In dev mode, the Vite dev server runs on a separate port (5173).
-  const getLanUrl = (): string => {
-    if (config?.lanIp) {
-      const port = import.meta.env.PROD ? config.port : (config.frontendPort || 5173);
-      return `http://${config.lanIp}:${port}`;
+  // Always point external devices to the HTTPS URL so:
+  // - Traffic is encrypted in transit on public WiFi
+  // - crypto.subtle is available → E2E WebSocket encryption activates
+  const getHttpsUrl = (): string => {
+    if (config?.lanIp && config?.httpsPort) {
+      return `https://${config.lanIp}:${config.httpsPort}`;
     }
-    // Fallback: use current origin (works when already on the IP)
     return window.location.origin;
   };
 
-  const lanUrl = getLanUrl();
+  const httpsUrl = getHttpsUrl();
 
   return (
     <footer className="qr-footer" id="qr-footer">
@@ -31,7 +28,7 @@ export function QRFooter({ config }: QRFooterProps) {
         <h3 className="qr-footer__title">Accedé desde tu celular</h3>
         <div className="qr-footer__code">
           <QRCodeSVG
-            value={lanUrl}
+            value={httpsUrl}
             size={140}
             bgColor="transparent"
             fgColor="#c4b5fd"
@@ -39,6 +36,11 @@ export function QRFooter({ config }: QRFooterProps) {
             includeMargin={false}
           />
         </div>
+        <p className="qr-footer__hint">
+          🔒 Primera vez: aceptá el certificado autofirmado en el navegador
+          <br />
+          <em>Avanzado → Continuar con {config?.lanIp ?? '…'} (no seguro)</em>
+        </p>
         <p className="qr-footer__copyright">
           © 2026 Carlos David Sandoval ·{' '}
           <a href="https://github.com/dotdeivid" target="_blank" rel="noopener noreferrer">

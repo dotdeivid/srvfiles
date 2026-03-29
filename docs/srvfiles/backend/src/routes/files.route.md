@@ -17,6 +17,7 @@ Un `Router` es como una mini-aplicación Express que agrupa rutas relacionadas. 
 router.post('/upload', upload.array('files', MAX_UPLOAD_COUNT), filesController.uploadFiles);
 router.get('/', filesController.listFiles);
 router.get('/download/:filename', filesController.downloadFile);
+router.get('/preview/:filename', filesController.previewFile);
 router.get('/stats', filesController.getStats);
 router.delete('/:filename', filesController.deleteFile);
 ```
@@ -26,8 +27,15 @@ router.delete('/:filename', filesController.deleteFile);
 | POST | `/api/files/upload` | `upload.array('files', 50)` | `uploadFiles` |
 | GET | `/api/files/` | — | `listFiles` |
 | GET | `/api/files/download/:filename` | — | `downloadFile` |
+| GET | `/api/files/preview/:filename` | — | `previewFile` |
 | GET | `/api/files/stats` | — | `getStats` |
 | DELETE | `/api/files/:filename` | — | `deleteFile` |
+
+### `/download/:filename` vs `/preview/:filename`
+
+Ambas rutas sirven el mismo archivo pero con comportamiento distinto:
+- `/download/`: `Content-Disposition: attachment` — fuerza descarga.
+- `/preview/`: sin ese header — el navegador decide cómo mostrar el archivo (inline para PDF, video, audio, etc.). Lo usa el previsualizador web/Tauri.
 
 ### Parámetros de ruta (`:filename`)
 

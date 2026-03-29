@@ -47,7 +47,9 @@ type ServerMessage =
   | { type: 'send-accept'; transferId: string }
   | { type: 'send-reject'; transferId: string; reason?: string }
   | { type: 'send-cancel'; transferId: string }
-  | { type: 'send-complete'; transferId: string };
+  | { type: 'send-complete'; transferId: string }
+  | { type: 'key-exchange'; publicKey: string }      // servidor envía su clave pública ECDH
+  | { type: 'encrypted'; iv: string; data: string }; // chunk cifrado con AES-256-GCM
 ```
 
 Un **tipo unión discriminado**: cada variante tiene un `type` diferente. TypeScript puede inferir todos los campos disponibles dependiendo del `type`, lo que hace el código seguro sin casteos manuales.
@@ -184,6 +186,38 @@ El servidor usa los primeros 36 bytes para saber a qué receptor enviar cada fra
 #### `await new Promise((r) => setTimeout(r, 0))`
 
 Cede el control al event loop entre chunks. Sin esto, enviar un archivo grande bloquearía la UI (no se podrían actualizar barras de progreso, ni responder a eventos de usuario) hasta que termine el loop.
+
+---
+
+## Cifrado E2E (ECDH P-256 + AES-256-GCM)
+
+Cada sesión P2P establece un canal cifrado de extremo a extremo antes de enviar datos. El relay retransmite los mensajes pero nunca puede leer el contenido.
+
+### Flujo de intercambio de claves
+
+```
+Cliente                        Servidor relay
+  |                                   |
+  |-- hello -------------------------→|
+  |←- welcome (clientId) ------------|
+  |                                   |
+  |  [cliente genera par ECDH]        |
+  |-- key-exchange (pubKey B64) ---→  |
+  |                                   | [servidor genera par ECDH efímero]
+  |                                   | [deriva AES-256-GCM con HKDF]
+  |←- key-exchange (serverPubKey) ---|
+  |  [cliente deriva AES-256-GCM]     |
+  |                                   |
+  |  ← canal cifrado activo →         |
+```
+
+### ¿Por qué HKDF?
+
+`deriveBits(ECDH)` produce un secreto compartido de 256 bits, pero usarlo directamente como clave AES es inseguro. HKDF ("HMAC-based Key Derivation Function") mezcla el secreto con sal e info contextual, generando una clave criptográficamente robusta.
+
+### Limitación: solo contextos seguros
+
+`crypto.subtle` solo está disponible en contextos seguros (HTTPS o `localhost`). En un navegador que accede al servidor por HTTP/LAN, el cifrado E2E no está disponible. Las transferencias Flutter↔Tauri y Flutter↔Flutter siempre están cifradas.
 
 ---
 

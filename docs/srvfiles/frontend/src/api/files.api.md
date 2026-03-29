@@ -55,9 +55,10 @@ interface DiskStats {
 interface AppConfig {
   appName: string;
   lanIp: string;
-  port: number;          // Puerto del backend (3001)
-  frontendPort: number;  // Puerto del frontend Vite (5173)
+  port: number;                  // Puerto del backend (3001)
+  frontendPort: number;          // Puerto del frontend Vite (5173)
   maxFileSizeMb: number;
+  previewMaxFileSizeMb: number;  // Límite para previsualización (MB)
   lanUrl: string;
 }
 ```
@@ -132,11 +133,16 @@ Nota: usa `axios` directamente (no `instance`) porque el endpoint es `/api/confi
 ### `getDownloadUrl`
 
 ```ts
-getDownloadUrl: (filename) =>
-  `${baseUrl}/api/files/download/${encodeURIComponent(filename)}`
+getDownloadUrl: (filename) => {
+  const token = getToken();
+  const url = `${baseUrl}/api/files/download/${encodeURIComponent(filename)}`;
+  return token ? `${url}?token=${encodeURIComponent(token)}` : url;
+}
 ```
 
-Construye la URL de descarga directa. Esta función es **sincrónica** — no hace ninguna petición de red; solo devuelve un string.
+Construye la URL de descarga directa con el token de sesión como query param (para que funcione dentro de `<a href>` y otras APIs que no permiten cabeceras). Sincrónica — no hace petición de red.
+
+El previsualizador (`PreviewModal`) deriva automáticamente la URL de preview reemplazando `/download/` por `/preview/` en esta URL. Así el token se preserva sin threading adicional.
 
 ---
 

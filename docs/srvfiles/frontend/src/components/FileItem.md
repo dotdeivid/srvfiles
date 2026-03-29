@@ -9,11 +9,12 @@
 
 ```tsx
 interface FileItemProps {
-  file: FileInfo;                           // Datos del archivo (nombre, tamaño, etc.)
-  onRequestDelete: (filename: string) => void; // Callback al hacer clic en "borrar"
-  viewMode: 'list' | 'grid';               // Cómo mostrar el archivo
-  getDownloadUrl: (filename: string) => string; // Función para obtener la URL de descarga
-  canDelete: boolean;                       // ¿Puede el usuario borrar este archivo?
+  file: FileInfo;
+  onRequestDelete: (filename: string) => void;
+  viewMode: 'list' | 'grid';
+  getDownloadUrl: (filename: string) => string;
+  canDelete: boolean;
+  previewMaxMb?: number; // Límite en MB para el botón "ver". Default: 1024.
 }
 ```
 
@@ -122,6 +123,38 @@ El atributo `download` le indica al navegador que debe descargar el archivo en l
 
 ---
 
-## Concepto: componentes presentacionales
+## Botón de previsualización
 
-`FileItem` es un componente "tonto" (dumb/presentational): no tiene estado propio ni efectos. Solo muestra datos y dispara callbacks hacia arriba. Esto lo hace simple de entender, fácil de reutilizar, y trivial de testear.
+```tsx
+const showEye = canPreview(file.name); // utilidad que comprueba la extensión
+const handlePreview = () => {
+  if (file.size > previewMaxMb * 1024 * 1024) {
+    toast.warning(`El archivo es demasiado grande para previsualizar`);
+    return;
+  }
+  setPreviewing(true);
+};
+```
+
+- `canPreview(filename)` (de `utils/fileTypeHelper`) retorna `true` si la extensión tiene soporte nativo (imagen, SVG, video, audio, PDF, texto).
+- Si el archivo supera `previewMaxMb`, se muestra un toast y no se abre el previsualizador.
+- El estado `previewing` controla la visibilidad del `PreviewModal`.
+
+### `PreviewModal` y `createPortal`
+
+El modal se renderiza fuera del árbol DOM del componente mediante `ReactDOM.createPortal`:
+
+```tsx
+{previewing && createPortal(
+  <PreviewModal file={file} downloadUrl={downloadUrl} onClose={() => setPreviewing(false)} />,
+  document.body,
+)}
+```
+
+Esto evita problemas de HTML inválido (el componente puede estar dentro de un `<tr>`) y garantiza que el overlay siempre quede por encima del resto de la UI.
+
+---
+
+## Estado interno
+
+`FileItem` tiene estado (`useState`) para controlar la previsualización. Ya no es un componente puramente presentacional, pero el estado es mínimo y local.

@@ -13,6 +13,7 @@ const router = Router();
 router.post('/upload', upload.array('files', MAX_UPLOAD_COUNT), filesController.uploadFiles);
 router.get('/', filesController.listFiles);
 router.get('/download/:filename', filesController.downloadFile);
+router.get('/preview/:filename', filesController.previewFile);
 router.get('/stats', filesController.getStats);
 router.delete('/:filename', filesController.deleteFile);
 

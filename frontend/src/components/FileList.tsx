@@ -8,9 +8,10 @@ interface FileListProps {
   onRequestDelete: (filename: string) => void;
   getDownloadUrl: (filename: string) => string;
   canDelete: boolean;
+  previewMaxMb?: number;
 }
 
-export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canDelete }: FileListProps) {
+export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canDelete, previewMaxMb }: FileListProps) {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [search, setSearch] = useState('');
 
@@ -136,6 +137,7 @@ export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canD
                   viewMode="list"
                   getDownloadUrl={getDownloadUrl}
                   canDelete={canDelete}
+                  previewMaxMb={previewMaxMb}
                 />
               ))}
             </tbody>
@@ -154,6 +156,7 @@ export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canD
               viewMode="grid"
               getDownloadUrl={getDownloadUrl}
               canDelete={canDelete}
+              previewMaxMb={previewMaxMb}
             />
           ))}
         </div>

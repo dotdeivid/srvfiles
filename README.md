@@ -9,12 +9,15 @@ Levantás SrvFiles en una computadora — vía web o como app de escritorio (Tau
 ## Características
 
 - **Subida y descarga** — drag & drop, múltiples archivos, hasta 10 GB por archivo
+- **Previsualización** — abrí imágenes, video, audio, PDF y texto directamente en la UI sin descargar (ver tabla abajo); límite configurable via `PREVIEW_MAX_FILE_SIZE_MB`
 - **Transferencia P2P directa** — enviá archivos de dispositivo a dispositivo sin pasar por disco, vía relay WebSocket
+- **Cifrado E2E en P2P** — intercambio de claves ECDH P-256 + AES-256-GCM; cada sesión usa una clave efímera
 - **Detección automática de servidores** — la UI encuentra otros servidores SrvFiles en la red; podés cambiar desde el header
 - **App de escritorio nativa** — empaquetada con Tauri 2 para macOS, Windows y Linux; actúa simultáneamente como servidor y cliente
 - **Autenticación PIN** — cada servidor genera un PIN automático de 6 dígitos; auto-auth desde localhost
 - **QR de acceso** — para conectar el celular sin tipear la IP
 - **Espacio en disco** — indicador visual en tiempo real
+- **Logging estructurado** — niveles debug/info/warn/error; backend con winston, Tauri con tauri-plugin-log
 
 ## Ecosistema
 
@@ -80,13 +83,33 @@ Dispara GitHub Actions y publica los instaladores en la sección Releases del re
 
 ---
 
+## Archivos que se pueden previsualizar
+
+| Categoría | Extensiones | Web / Tauri |
+|-----------|------------|-------------|
+| **Imagen** | jpg, jpeg, png, gif, webp, bmp, ico | `<img>` + zoom con scroll |
+| **SVG** | svg | `<img>` nativo |
+| **Video** | mp4, mov, m4v, webm | `<video>` con controles nativos |
+| **Audio** | mp3, wav, aac, m4a, ogg, flac, opus | `<audio>` con controles nativos |
+| **PDF** | pdf | `<iframe>` inline |
+| **Texto / Código** | txt, md, json, xml, csv, yaml, yml, html, js, ts, dart, py, go, rs, c, cpp, h, css, sh, bash | `<pre>` scrollable monospace |
+| **Desconocido** | docx, xlsx, zip, apk, etc. | Descarga nativa (browser) · `shell.open()` (Tauri) |
+
+Archivos que superen el límite `PREVIEW_MAX_FILE_SIZE_MB` (default 1 GB) no se pueden previsualizar y muestran un aviso.
+
+---
+
 ## Variables de entorno
+
+El archivo de referencia completo está en `backend/.env.example`.
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
 | `PORT` | `3001` | Puerto del servidor |
 | `APP_NAME` | `SrvFiles` | Nombre mostrado en la UI |
-| `MAX_FILE_SIZE_MB` | `10240` | Límite por archivo (MB) |
+| `MAX_FILE_SIZE_MB` | `10240` | Límite de tamaño por archivo (MB) |
+| `MAX_UPLOAD_COUNT` | `50` | Máximo de archivos por request de subida |
+| `PREVIEW_MAX_FILE_SIZE_MB` | `1024` | Límite para previsualización (MB) |
 | `UPLOADS_DIR` | `<cwd>/uploads` | Carpeta de almacenamiento |
 | `VITE_BACKEND_PORT` | `3001` | Puerto del backend (frontend) |
 
