@@ -1,11 +1,10 @@
 import crypto from 'crypto';
-import type { Request, Response, NextFunction } from 'express';
-import { log } from '../lib/logger';
+import { log } from '../../lib/logger';
 
 // ─── PIN state (in-memory, cleared on every server restart) ─────────
 
 let pinHash: string | null = null;
-let pinPlain: string | null = null; // kept only for the /api/pin localhost endpoint
+let pinPlain: string | null = null;
 const sessions = new Map<string, true>();
 
 // ─── Rate limiting: IP → { count, blockedUntil } ─────────────────────
@@ -66,9 +65,9 @@ export function recordFailedAttempt(ip: string): void {
   entry.count += 1;
   if (entry.count >= MAX_ATTEMPTS) {
     entry.blockedUntil = Date.now() + BLOCK_MS;
-    log.warn('auth.ts', 'IP blocked due to too many failed PIN attempts', { ip, attempts: entry.count });
+    log.warn('auth.service.ts', 'IP blocked due to too many failed PIN attempts', { ip, attempts: entry.count });
   } else {
-    log.warn('auth.ts', 'Failed PIN attempt recorded', { ip, count: entry.count });
+    log.warn('auth.service.ts', 'Failed PIN attempt recorded', { ip, count: entry.count });
   }
   rateLimitMap.set(ip, entry);
 }
@@ -84,18 +83,4 @@ export function resetAuth(): void {
   pinPlain = null;
   sessions.clear();
   rateLimitMap.clear();
-}
-
-// ─── Express middleware ───────────────────────────────────────────────
-
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  const token = (req.headers['x-srvfiles-token'] as string | undefined)
-    ?? (req.query.token as string | undefined);
-  if (validateToken(token)) {
-    next();
-  } else {
-    const ip = (req.socket.remoteAddress ?? '').replace('::ffff:', '');
-    log.warn('auth.ts', 'Unauthorized request — invalid or missing token', { ip, path: req.path });
-    res.status(401).json({ error: 'Unauthorized' });
-  }
 }

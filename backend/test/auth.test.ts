@@ -9,7 +9,7 @@ import {
   recordFailedAttempt,
   clearFailedAttempts,
   resetAuth,
-} from '../src/middleware/auth';
+} from '../src/features/auth/auth.service';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,7 +54,6 @@ describe('validatePin', () => {
   });
 
   it('returns false when no PIN has been generated', () => {
-    // resetAuth() was called in beforeEach — no PIN exists yet
     expect(validatePin('123456')).toBe(false);
   });
 

@@ -1,13 +1,12 @@
 import { Router } from 'express';
-import upload from '../middleware/upload';
-import * as filesController from '../controllers/files.controller';
-import { MAX_UPLOAD_COUNT } from '../config';
+import upload from './upload.middleware';
+import * as filesController from './files.controller';
+import { MAX_UPLOAD_COUNT } from '../../config';
 
 const router = Router();
 
 /**
  * File routes — thin layer that maps HTTP verbs to controller functions.
- * All business logic lives in controllers/ and services/.
  */
 
 router.post('/upload', upload.array('files', MAX_UPLOAD_COUNT), filesController.uploadFiles);

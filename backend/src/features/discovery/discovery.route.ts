@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { scan } from '../controllers/discovery.controller';
+import { scan } from './discovery.controller';
 
 const router = Router();
 

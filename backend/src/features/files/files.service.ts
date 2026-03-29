@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import checkDiskSpace from 'check-disk-space';
-import { UPLOADS_DIR } from '../middleware/upload';
-import { sanitizeFilename } from '../utils/sanitize';
-import type { FileInfo, UploadedFileInfo, DiskStats } from '../types';
-import { log } from '../lib/logger';
+import { UPLOADS_DIR } from '../../infrastructure/storage';
+import { sanitizeFilename } from '../../shared/utils/sanitize';
+import type { FileInfo, UploadedFileInfo, DiskStats } from '../../domain/types';
+import { log } from '../../lib/logger';
 
 /**
  * Service layer for file operations.
@@ -14,8 +14,6 @@ import { log } from '../lib/logger';
 /**
  * Reads all files from the uploads directory and returns their metadata,
  * sorted from newest to oldest by creation date. Excludes `.gitkeep`.
- *
- * @returns Array of {@link FileInfo} objects, newest first.
  */
 export function listFiles(): FileInfo[] {
   const fileNames = fs.readdirSync(UPLOADS_DIR);
@@ -37,10 +35,7 @@ export function listFiles(): FileInfo[] {
 
 /**
  * Converts the array of Multer file objects produced by the upload middleware
- * into the public {@link UploadedFileInfo} shape expected by the API response.
- *
- * @param files - Raw Multer file objects from `req.files`.
- * @returns Array of {@link UploadedFileInfo} with public download URLs.
+ * into the public UploadedFileInfo shape expected by the API response.
  */
 export function processUploadedFiles(files: Express.Multer.File[]): UploadedFileInfo[] {
   return files.map((file) => ({
@@ -53,11 +48,7 @@ export function processUploadedFiles(files: Express.Multer.File[]): UploadedFile
 
 /**
  * Sanitizes the given filename and resolves its absolute path inside the uploads directory.
- * Throws if the filename fails sanitization (e.g. contains path traversal characters).
- *
- * @param filename - The raw filename from the request (URL param or body).
- * @returns An object with `filePath` (absolute path) and `exists` (whether the file is present on disk).
- * @throws {Error} If `filename` contains forbidden characters (delegated to `sanitizeFilename`).
+ * Throws if the filename fails sanitization.
  */
 export function resolveFilePath(filename: string): { filePath: string; exists: boolean } {
   sanitizeFilename(filename); // throws on invalid
@@ -67,10 +58,7 @@ export function resolveFilePath(filename: string): { filePath: string; exists: b
 
 /**
  * Deletes a file from the uploads directory by name.
- *
- * @param filename - The name of the file to delete.
- * @returns `true` if the file was deleted, `false` if it did not exist.
- * @throws {Error} If `filename` contains forbidden characters.
+ * Returns `true` if the file was deleted, `false` if it did not exist.
  */
 export function deleteFile(filename: string): boolean {
   const { filePath, exists } = resolveFilePath(filename);
@@ -85,9 +73,7 @@ export function deleteFile(filename: string): boolean {
 }
 
 /**
- * Queries disk space for the uploads volume using `check-disk-space`.
- *
- * @returns A promise resolving to {@link DiskStats} with `total`, `used`, and `free` in bytes.
+ * Queries disk space for the uploads volume.
  */
 export async function getDiskStats(): Promise<DiskStats> {
   try {

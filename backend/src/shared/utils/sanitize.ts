@@ -7,7 +7,7 @@
  *
  * @param filename - The raw filename received from the client.
  * @returns A safe, filesystem-friendly filename.
- * @throws {Error} If the filename contains path traversal sequences (`..`, `/`, `\`).
+ * @throws {Error} If the filename contains path traversal sequences.
  */
 export function sanitizeFilename(filename: string): string {
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {

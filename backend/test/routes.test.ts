@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import express, { type Express } from 'express';
-import authRouter from '../src/routes/auth.route';
-import healthRouter from '../src/routes/health.route';
-import { requireAuth, generatePin, getPin, createSession, resetAuth, recordFailedAttempt } from '../src/middleware/auth';
+import authRouter from '../src/features/auth/auth.route';
+import healthRouter from '../src/features/health/health.route';
+import { requireAuth } from '../src/features/auth/auth.middleware';
+import { generatePin, getPin, createSession, resetAuth, recordFailedAttempt } from '../src/features/auth/auth.service';
 
 // ─── Test app factory ─────────────────────────────────────────────────────────
-// Builds the same Express stack as index.ts but without calling server.listen().
+// Builds the same Express stack as app.ts but without calling server.listen().
 
 function createTestApp(): Express {
   const app = express();
@@ -88,8 +89,6 @@ describe('POST /api/auth', () => {
 
   it('returns 400 when PIN is not a string', async () => {
     const res = await request(app).post('/api/auth').send({ pin: 123456 });
-    // numeric pins are coerced — server checks typeof string
-    // (either 400 if rejected or 401 if treated as wrong — both are valid rejections)
     expect([400, 401]).toContain(res.status);
   });
 
@@ -157,7 +156,6 @@ describe('requireAuth middleware', () => {
 describe('GET /api/pin', () => {
   it('returns the PIN when accessed from loopback (supertest = 127.0.0.1)', async () => {
     const res = await request(app).get('/api/pin');
-    // Supertest connects via 127.0.0.1, so this should succeed
     expect(res.status).toBe(200);
     expect(res.body.pin).toBe(currentPin);
   });
