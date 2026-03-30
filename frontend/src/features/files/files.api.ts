@@ -25,8 +25,14 @@ export function getApiUrl(): string {
   }
 
   // Auto-detect: use current hostname with backend port (web mode + LAN access).
-  const backendPort = import.meta.env.VITE_BACKEND_PORT || '3001';
-  return `${window.location.protocol}//${window.location.hostname}:${backendPort}`;
+  // When served over HTTPS the frontend and backend share the same port (e.g. :3002),
+  // so we reuse window.location.port. Over HTTP (Tauri dev, plain browser dev)
+  // the Vite dev server and the backend run on different ports, so we fall back to
+  // VITE_BACKEND_PORT (default 3001) to avoid hitting the Vite server instead of the API.
+  const port = window.location.protocol === 'https:'
+    ? (window.location.port || '443')
+    : (import.meta.env.VITE_BACKEND_PORT || '3001');
+  return `${window.location.protocol}//${window.location.hostname}:${port}`;
 }
 
 // ─── Types ──────────────────────────────────────────────────────────

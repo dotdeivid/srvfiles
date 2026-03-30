@@ -1,6 +1,6 @@
 # SrvFiles — Inventario de funcionalidades
 
-> Última actualización: 2026-03-28
+> Última actualización: 2026-03-29
 
 ---
 
@@ -69,6 +69,7 @@
 - Botón de rescan manual con indicador de carga
 - Ingreso manual de URL
 - QR code de acceso con URL completa del servidor
+- QR code apunta a la URL HTTPS del servidor (puerto 3002) para que los navegadores accedan con contexto seguro
 
 ### Dispositivo
 - Nombre del dispositivo editable (modal al primer uso)
@@ -260,3 +261,5 @@ Todas las funcionalidades de Web, más:
 | `MAX_FILE_SIZE_MB` | `10240` | Límite de subida por archivo (MB) |
 | `MAX_UPLOAD_COUNT` | `50` | Máximo de archivos por request |
 | `PREVIEW_MAX_FILE_SIZE_MB` | `1024` | Límite para previsualización (MB) |
+| `HTTPS_PORT` | `PORT+1` | Puerto del servidor HTTPS para navegadores externos |
+| `CERTS_DIR` | `<cwd>/certs` | Directorio del certificado TLS auto-generado |

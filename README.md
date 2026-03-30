@@ -52,7 +52,7 @@ npm run dev
 ```
 
 Backend en `http://localhost:3001`, frontend en `http://localhost:5173` con hot reload.
-Otros dispositivos acceden por `http://<tu-ip>:5173`.
+Otros dispositivos acceden por `https://<tu-ip>:3002` (la primera vez hay que aceptar el certificado autofirmado en el navegador).
 
 ### Modo desktop / Tauri (desarrollo)
 
@@ -111,6 +111,8 @@ El archivo de referencia completo está en `backend/.env.example`.
 | `MAX_UPLOAD_COUNT` | `50` | Máximo de archivos por request de subida |
 | `PREVIEW_MAX_FILE_SIZE_MB` | `1024` | Límite para previsualización (MB) |
 | `UPLOADS_DIR` | `<cwd>/uploads` | Carpeta de almacenamiento |
+| `HTTPS_PORT` | `PORT+1` | Puerto HTTPS para navegadores externos |
+| `CERTS_DIR` | `<cwd>/certs` | Carpeta del certificado TLS (auto-generado) |
 | `VITE_BACKEND_PORT` | `3001` | Puerto del backend (frontend) |
 
 ---

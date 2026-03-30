@@ -126,6 +126,7 @@ npm run dev
 ```
 
 Abrí `http://localhost:5173` en el navegador.
+Otros dispositivos en la red acceden por `https://<tu-ip>:3002` (la primera vez hay que aceptar el certificado autofirmado en el navegador).
 
 ### Modo app de escritorio — con Tauri
 

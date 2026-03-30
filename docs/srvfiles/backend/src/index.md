@@ -1,118 +1,86 @@
 # index.ts
 
 **Archivo:** `src/index.ts`
-**Rol:** Punto de entrada del servidor. Configura Express, registra rutas, sirve el frontend en producción, e inicia el servidor HTTP + WebSocket.
+**Rol:** Punto de entrada del servidor. Crea la app Express, levanta los servidores HTTP y HTTPS con sus WebSocketServers asociados, e imprime las URLs y el PIN al arrancar.
 
 ---
 
-## ¿Qué es Express?
-
-Express es el framework web más popular de Node.js. Permite definir endpoints HTTP (GET, POST, DELETE, etc.) con una API simple. El objeto `app` que se crea aquí es toda la aplicación web.
-
----
-
-## Configuración de Express
+## Creación de la app Express
 
 ```ts
-const app = express();
-
-app.use(cors({ origin: '*' }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+const app = createApp();
 ```
 
-### `app.use(...)` — Middlewares globales
-
-Un **middleware** es una función que se ejecuta antes de que llegue a las rutas. Aquí se registran tres:
-
-- **`cors({ origin: '*' })`**: permite peticiones desde cualquier origen (cualquier IP, cualquier puerto). Sin esto, los navegadores bloquearían las peticiones del frontend al backend en modo dev (donde tienen puertos diferentes).
-- **`express.json()`**: parsea el cuerpo de las peticiones con `Content-Type: application/json` y lo pone en `req.body`.
-- **`express.urlencoded({ extended: true })`**: parsea el cuerpo de peticiones de formularios HTML clásicos (`application/x-www-form-urlencoded`).
+La app Express se crea con `createApp()` (definida en `app.ts`) en lugar de configurarla aquí directamente. Esto separa la configuración de rutas del levantamiento de servidores, lo que permite importar `createApp` en tests sin arrancar puertos reales.
 
 ---
 
-## Registro de rutas
-
-```ts
-app.use('/api/files', filesRouter);
-app.use('/api/health', healthRouter);
-app.use('/api/config', configRouter);
-app.use('/api/discovery', discoveryRouter);
-```
-
-Cada router maneja un prefijo de ruta. Por ejemplo, `filesRouter` maneja todas las rutas que empiezan con `/api/files`.
-
----
-
-## Servir el frontend en producción
-
-```ts
-const FRONTEND_DIST = (process as any).pkg
-  ? path.join(__dirname, '..', '..', 'frontend', 'dist')
-  : path.resolve(process.cwd(), '..', 'frontend', 'dist');
-
-app.use(express.static(FRONTEND_DIST));
-```
-
-### ¿Qué es `express.static`?
-
-Sirve archivos estáticos (HTML, CSS, JS, imágenes) desde un directorio. Cuando el navegador pide `/index.html` o `/assets/main.js`, Express busca ese archivo en `FRONTEND_DIST` y lo envía directamente.
-
-### Lógica de la ruta
-
-- **`process.pkg`**: propiedad inyectada por `pkg` (el empaquetador que convierte el proyecto en un binario). Si existe, el binario tiene el frontend embebido en una ruta diferente.
-- Si no hay `process.pkg` (modo dev): busca `../frontend/dist` relativo al directorio de trabajo.
-
-### SPA Fallback
-
-```ts
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(FRONTEND_DIST, 'index.html'), (err) => {
-      if (err) {
-        res.status(404).json({ error: 'Frontend not built. Run: cd frontend && npm run build' });
-      }
-    });
-  }
-});
-```
-
-En una **Single Page Application** (SPA), toda la navegación la maneja JavaScript en el cliente. Si el usuario refresca en `/settings` (una ruta de React), el servidor no tiene ese archivo — devolvería 404. Este handler atrapa cualquier ruta que no empiece con `/api` y devuelve `index.html`, dejando que React Router maneje la navegación.
-
----
-
-## Servidor HTTP + WebSocket
+## Servidor HTTP (puerto 3001)
 
 ```ts
 const server = http.createServer(app);
-
 const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', handleConnection);
 
-server.listen(PORT, HOST, () => { ... });
-```
-
-### ¿Por qué crear un `http.Server` en lugar de usar `app.listen()`?
-
-Express puede escuchar directamente con `app.listen()`, pero eso crea un servidor HTTP que Express controla. Para agregar WebSockets al mismo puerto, necesitamos acceso al servidor HTTP subyacente. `http.createServer(app)` crea el servidor explícitamente, y luego tanto Express como el WebSocketServer lo comparten.
-
-### WebSocketServer
-
-- **`{ server, path: '/ws' }`**: el WebSocketServer se "engancha" al servidor HTTP existente. Solo acepta upgrades de WebSocket en la ruta `/ws`.
-- **`wss.on('connection', handleConnection)`**: cada nueva conexión WebSocket es manejada por `handleConnection` del `transfer.service`.
-
-### `HOST = '0.0.0.0'`
-
-Escucha en todas las interfaces de red de la máquina (no solo `localhost`). Esto es necesario para que otros dispositivos en la red puedan conectarse.
-
-### Callback de inicio
-
-```ts
 server.listen(PORT, HOST, () => {
-  const lanIp = getLanIp();
-  console.log(`   Local:   http://localhost:${PORT}`);
-  console.log(`   Network: http://${lanIp}:${PORT}`);
+  log.debug('index.ts', 'HTTP server listening', { port: PORT });
 });
 ```
 
-Se ejecuta una sola vez cuando el servidor está listo. Imprime las URLs de acceso.
+El servidor HTTP escucha en `PORT` (por defecto `3001`) en todas las interfaces (`HOST = '0.0.0.0'`). Lo usan la webview de Tauri y la app Flutter, que no necesitan TLS porque conectan localmente o por canal de confianza.
+
+El `WebSocketServer` se adjunta al mismo servidor HTTP para que las conexiones WebSocket (`/ws`) compartan el puerto 3001 sin abrir uno adicional.
+
+---
+
+## Servidor HTTPS (puerto 3002)
+
+```ts
+void (async () => {
+  const cert = await getOrCreateCert(CERTS_DIR);
+  const httpsServer = https.createServer({ key: cert.key, cert: cert.cert }, app);
+
+  const wssHttps = new WebSocketServer({ server: httpsServer, path: '/ws' });
+  wssHttps.on('connection', handleConnection);
+
+  httpsServer.listen(HTTPS_PORT, HOST, () => {
+    const lanIp = getLanIp();
+    const pin = generatePin();
+    console.log(`   Local (Tauri):  http://localhost:${PORT}`);
+    console.log(`   Network (web):  https://${lanIp}:${HTTPS_PORT}`);
+    console.log(`   PIN: ${pin}`);
+  });
+})();
+```
+
+El servidor HTTPS escucha en `HTTPS_PORT` (por defecto `PORT + 1 = 3002`). Es necesario para navegadores externos en la red local, ya que los navegadores modernos solo exponen `crypto.subtle` (requerido para el cifrado E2E del P2P) en contextos seguros (`localhost` o HTTPS).
+
+Ambos servidores comparten exactamente el mismo objeto `app` y el mismo `handleConnection` — la diferencia es solo el transporte (HTTP vs HTTPS).
+
+### Certificado TLS
+
+`getOrCreateCert(CERTS_DIR)` genera un certificado autofirmado RSA-2048/SHA-256 la primera vez y lo persiste en `backend/certs/`. En arranques posteriores lo reutiliza. Los navegadores muestran advertencia la primera vez; el usuario debe aceptarla manualmente.
+
+### Generación del PIN
+
+`generatePin()` se llama dentro del callback de `httpsServer.listen` — es decir, una sola vez al arrancar, después de que el servidor HTTPS ya está escuchando. El PIN se imprime con el formato especial `PIN: XXXXXX` para que el IPC de Tauri pueda parsearlo.
+
+---
+
+## Manejo de errores y shutdown limpio
+
+```ts
+server.on('error', (err) => { log.error('index.ts', 'Error al iniciar el servidor HTTP', { error: String(err) }); });
+
+process.on('SIGTERM', () => { resetAuth(); process.exit(0); });
+process.on('SIGINT',  () => { resetAuth(); process.exit(0); });
+process.on('uncaughtException', (err) => { log.error('index.ts', 'Excepción no capturada', { error: String(err) }); });
+```
+
+En SIGTERM y SIGINT (Ctrl+C o señal de proceso) se llama `resetAuth()` para borrar de memoria el PIN, los tokens de sesión y los contadores de rate limit antes de salir. Las excepciones no capturadas se loguean para debugging.
+
+---
+
+## ¿Por qué `void (async () => { ... })()`?
+
+TypeScript prohíbe usar `await` en el top level de un módulo CommonJS. Se usa una IIFE async (`(async () => { ... })()`) para poder esperar `getOrCreateCert`. El prefijo `void` descarta la promesa devuelta sin dejarla flotando (silencia la advertencia de `@typescript-eslint/no-floating-promises`).
