@@ -85,6 +85,12 @@ git tag v1.2.0 && git push origin v1.2.0
 
 Dispara GitHub Actions y publica los instaladores en la sección Releases del repo.
 
+Para eliminar un tag (local y origin):
+
+```bash
+git tag -d v1.2.0 && git push origin --delete v1.2.0
+```
+
 ---
 
 ## Archivos que se pueden previsualizar

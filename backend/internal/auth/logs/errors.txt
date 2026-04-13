@@ -41,3 +41,46 @@
 2026-04-05 22:16:06 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":3,"ip":"10.0.0.1"}
 2026-04-05 22:16:06 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":4,"ip":"10.0.0.1"}
 2026-04-05 22:16:06 WARN  [auth.service.go] IP blocked due to too many failed PIN attempts — {"attempts":5,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.handler.go] Auth attempt with missing PIN — {"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":2,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":3,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":4,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] IP blocked due to too many failed PIN attempts — {"attempts":5,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.handler.go] Rate limited auth attempt — {"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":2,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":3,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":4,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.middleware.go] Unauthorized request — invalid or missing token — {"ip":"10.0.0.1","path":"/api/protected"}
+2026-04-12 23:33:21 WARN  [auth.middleware.go] Unauthorized request — invalid or missing token — {"ip":"10.0.0.1","path":"/api/protected"}
+2026-04-12 23:33:21 WARN  [auth.middleware.go] Unauthorized request — invalid or missing token — {"ip":"10.0.0.1","path":"/api/protected"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":2,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":3,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":4,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":2,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":3,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":4,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] IP blocked due to too many failed PIN attempts — {"attempts":5,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":2,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":3,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":4,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] IP blocked due to too many failed PIN attempts — {"attempts":5,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":2,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":3,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":4,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] IP blocked due to too many failed PIN attempts — {"attempts":5,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":1,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":2,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":3,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] Failed PIN attempt recorded — {"count":4,"ip":"10.0.0.1"}
+2026-04-12 23:33:21 WARN  [auth.service.go] IP blocked due to too many failed PIN attempts — {"attempts":5,"ip":"10.0.0.1"}

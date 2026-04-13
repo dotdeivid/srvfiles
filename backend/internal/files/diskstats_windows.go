@@ -2,15 +2,15 @@
 
 package files
 
-import "syscall"
+import "golang.org/x/sys/windows"
 
 func getDiskStats(path string) (DiskStats, error) {
-	pathPtr, err := syscall.UTF16PtrFromString(path)
+	pathPtr, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return DiskStats{}, err
 	}
 	var freeBytesAvailable, totalBytes, totalFreeBytes uint64
-	err = syscall.GetDiskFreeSpaceEx(pathPtr, &freeBytesAvailable, &totalBytes, &totalFreeBytes)
+	err = windows.GetDiskFreeSpaceEx(pathPtr, &freeBytesAvailable, &totalBytes, &totalFreeBytes)
 	if err != nil {
 		return DiskStats{}, err
 	}
