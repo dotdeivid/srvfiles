@@ -1,85 +1,83 @@
-# discovery.service.ts
+# discovery/service.go
 
-**Archivo:** `src/features/discovery/discovery.service.ts`
-**Rol:** Escanea la subnet local /24 en busca de otras instancias de SrvFiles corriendo en la red, consultando el endpoint `/api/health` de cada IP en paralelo.
+**Archivo:** `internal/discovery/service.go`
+**Rol:** Escanea la red local /24 en paralelo para descubrir otras instancias de SrvFiles. Equivalente a `discovery.service.ts` del backend Node.js.
 
 ---
 
-## `probeHost` (función interna)
+## `ScanNetwork`
 
-```ts
-function probeHost(ip: string): Promise<DiscoveredServer | null> {
-  return new Promise((resolve) => {
-    const req = http.request(
-      { hostname: ip, port: PORT, path: '/api/health', method: 'GET' },
-      (res) => {
-        let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(data);
-            if (json.status === 'ok' && String(json.app).toLowerCase() === 'srvfiles') {
-              resolve({ ip, url: `http://${ip}:${PORT}`, appName: json.appName || 'SrvFiles' });
-            } else {
-              resolve(null);
+```go
+func ScanNetwork() []DiscoveredServer {
+    ips    := network.GetSubnetIPs()
+    selfIp := network.GetLanIp()
+
+    results := make(chan DiscoveredServer, len(ips))
+    var wg sync.WaitGroup
+
+    for _, ip := range ips {
+        if ip == selfIp {
+            continue // no reportarse a sí mismo
+        }
+        wg.Add(1)
+        go func(ip string) {
+            defer wg.Done()
+            if s := probeHost(ip); s != nil {
+                results <- *s
             }
-          } catch {
-            resolve(null);
-          }
-        });
-      }
-    );
-    req.setTimeout(500, () => { req.destroy(); resolve(null); });
-    req.on('error', () => resolve(null));
-    req.end();
-  });
+        }(ip)
+    }
+
+    wg.Wait()
+    close(results)
+
+    servers := make([]DiscoveredServer, 0)
+    for s := range results {
+        servers = append(servers, s)
+    }
+    return servers
 }
 ```
 
-Hace un GET a `/api/health` en la IP y puerto dados. Identifica SrvFiles verificando `json.status === 'ok'` y `json.app.toLowerCase() === 'srvfiles'`.
+Lanza 254 goroutines en paralelo (una por IP del subnet). Cada goroutine es independiente — no hay pool ni semáforo porque 254 goroutines simultáneas son triviales para el scheduler de Go (cada goroutine usa ~2 KB de stack inicial).
 
-### Timeout de 500 ms
-
-Si la IP no responde en 500 ms, `req.destroy()` cancela la conexión y la promesa resuelve con `null`. Este timeout permite escanear 254 IPs en paralelo en aproximadamente 500 ms totales (en lugar de 127 segundos secuencialmente).
-
-### Nunca rechaza
-
-Tanto el timeout como los errores de red (`req.on('error', ...)`) resuelven con `null` en lugar de rechazar. Esto es crítico: `Promise.all` falla si cualquier promesa rechaza, lo que rompería el escaneo completo.
-
-### Acumulación del body
-
-HTTP/1.1 puede fragmentar la respuesta en varios eventos `data`. Se acumulan en `data` y se parsean en el evento `end`.
+`sync.WaitGroup` espera a que todas terminen antes de drenar el canal. El canal es buffered con capacidad `len(ips)` para que las goroutines no bloqueen al escribir.
 
 ---
 
-## `scanNetwork`
+## `probeHost`
 
-```ts
-export async function scanNetwork(): Promise<DiscoveredServer[]> {
-  const localIp = getLanIp();
-  const ips = getSubnetIPs();
+```go
+var probeClient = &http.Client{
+    Timeout: 500 * time.Millisecond,
+    Transport: &http.Transport{
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+    },
+}
 
-  log.info('discovery.service.ts', 'Starting LAN scan', { ... });
+func probeHost(ip string) *DiscoveredServer {
+    url  := fmt.Sprintf("http://%s:%d/api/health", ip, config.Port)
+    resp, err := probeClient.Get(url)
+    if err != nil { return nil }
+    defer resp.Body.Close()
 
-  const results = await Promise.all(ips.map((ip) => probeHost(ip)));
+    var health map[string]string
+    if json.NewDecoder(resp.Body).Decode(&health) != nil { return nil }
 
-  const found = results
-    .filter((r): r is DiscoveredServer => r !== null)
-    .filter((r) => r.ip !== localIp);
+    if health["status"] != "ok" || strings.ToLower(health["app"]) != "srvfiles" {
+        return nil
+    }
 
-  log.info('discovery.service.ts', 'LAN scan complete', { found: found.length });
-  return found;
+    return &DiscoveredServer{
+        IP:      ip,
+        AppName: health["appName"],
+        Port:    config.Port,
+    }
 }
 ```
 
-### `Promise.all(ips.map(...))`
+Timeout de 500 ms: tiempo suficiente para una red LAN, suficientemente corto para que el scan de 254 IPs no bloquee la UI más de ~500 ms (las goroutines corren en paralelo, no en serie).
 
-Lanza las 254 peticiones simultáneamente. El tiempo total es el de la petición más lenta (~500 ms), no la suma de todas.
+`InsecureSkipVerify: true` es necesario para aceptar el certificado autofirmado del servidor HTTPS remoto. Solo se usa para el sondeo de descubrimiento, no para la comunicación real de datos.
 
-### Type predicate `.filter((r): r is DiscoveredServer => r !== null)`
-
-Después del filtro, TypeScript sabe que el array solo contiene `DiscoveredServer` (no `null`), sin necesidad de casteos adicionales.
-
-### Exclusión del propio servidor
-
-`.filter((r) => r.ip !== localIp)` elimina la IP propia para no aparecer como "otro servidor encontrado".
+La verificación `strings.ToLower(health["app"]) == "srvfiles"` identifica inequívocamente una instancia de SrvFiles frente a otros servidores HTTP en la red.

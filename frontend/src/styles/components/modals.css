@@ -103,10 +103,30 @@
   box-sizing: border-box;
 }
 
-.preview-video {
-  max-width: 100%;
+/* ─── Vidstack player — theme override ───────────────────────────── */
+.preview-video-player {
+  --media-brand:            #6366f1;
+  --media-focus-ring-color: rgba(99, 102, 241, 0.5);
+
+  /* Controls panel */
+  --media-controls-bg:
+    linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, transparent 100%);
+
+  /* Menu (quality, playback speed, etc.) */
+  --media-menu-bg:          #0f0f1a;
+  --media-menu-border:      1px solid rgba(99, 102, 241, 0.2);
+  --media-menu-border-color: rgba(99, 102, 241, 0.2);
+
+  /* Tooltip */
+  --media-tooltip-bg:       rgba(10, 10, 20, 0.9);
+  --media-tooltip-border:   1px solid rgba(99, 102, 241, 0.15);
+
+  width: 100%;
   max-height: 100%;
   border-radius: var(--radius-md);
+  overflow: hidden;
+  /* Soft glow matching the card shadow style */
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.15), var(--shadow-md);
 }
 
 /* ─── Audio preview ───────────────────────────────────────────────── */

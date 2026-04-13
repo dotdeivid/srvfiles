@@ -1,124 +1,149 @@
-# transfer.handler.ts
+# transfer/handler.go
 
-**Archivo:** `src/features/transfer/transfer.handler.ts`
-**Rol:** Handler principal del WebSocket. Gestiona autenticación de conexiones, intercambio de claves E2E, señalización de transferencias P2P y relay de chunks binarios entre dispositivos.
-
----
-
-## Concepto: relay WebSocket
-
-En una red local típica los dispositivos no pueden conectarse directamente entre sí a nivel TCP. El relay actúa de intermediario: todos se conectan al servidor, y el servidor retransmite los mensajes entre ellos. El servidor no inspecciona el contenido de los archivos.
+**Archivo:** `internal/transfer/handler.go`
+**Rol:** Handler WebSocket principal. Gestiona autenticación a nivel de protocolo WS, key-exchange E2E, relay de señalización P2P y relay de chunks binarios cifrados. Equivalente a `transfer.handler.ts`.
 
 ---
 
-## `handleConnection`
+## `HandleConnection`
 
-Punto de entrada registrado en `index.ts`:
-```ts
-wss.on('connection', handleConnection);
-```
+```go
+func HandleConnection(w http.ResponseWriter, r *http.Request) {
+    conn, _ := upgrader.Upgrade(w, r, nil)
+    defer conn.Close()
 
-### Inicialización por conexión
+    clientID      := newUUID()
+    session       := &WsSession{}
+    var client    *Client
+    authenticated := false
 
-```ts
-const clientId = crypto.randomUUID();
-const rawIp = (req.socket.remoteAddress || '').replace('::ffff:', '');
-const clientIp = (rawIp === '127.0.0.1' || rawIp === '::1' || rawIp === '') ? getLanIp() : rawIp;
-let client: ConnectedClient | null = null;
-let authenticated = false;
-const session = new WsSession();
-```
+    for {
+        msgType, data, err := conn.ReadMessage()
+        if err != nil { break }
+        // ... procesar frame
+    }
 
-Cada conexión recibe un UUID único. Las conexiones desde loopback (`127.0.0.1`, `::1`) reciben la IP LAN real para que otros dispositivos las vean correctamente en la lista de clientes.
-
----
-
-## Flujo de mensajes
-
-### 1. Autenticación (primer mensaje obligatorio)
-
-```ts
-if (!authenticated) {
-  if (msg.type !== 'auth') { ws.close(4401, 'Unauthorized'); return; }
-  if (!validateToken(String(msg.token ?? ''))) { ws.close(4401, 'Token inválido'); return; }
-  authenticated = true;
-  ws.send(JSON.stringify({ type: 'auth_ok' }));
-  return;
+    // cleanup al desconectar
+    if client != nil {
+        Default.Remove(clientID)
+        Default.BroadcastClients()
+    }
 }
 ```
 
-El **primer** mensaje de cualquier conexión WebSocket debe ser `{ type: 'auth', token: string }`. Si no, la conexión se cierra con código `4401`. Esto protege el WebSocket con el mismo sistema de tokens que las rutas HTTP.
-
-### 2. Intercambio de claves (opcional)
-
-```ts
-if (msg.type === 'key-exchange') {
-  const serverPubKeyB64 = await session.handleKeyExchange(String(msg.publicKey ?? ''));
-  if (client) client.cipher = session.cipher;
-  ws.send(JSON.stringify({ type: 'key-exchange', publicKey: serverPubKeyB64 }));
-}
-```
-
-Puede ocurrir en cualquier momento después de autenticarse. El cliente envía su clave pública ECDH P-256 en base64; el servidor devuelve la suya. Ambos derivan la misma clave AES-256-GCM. Desde ese momento, todos los mensajes JSON se envuelven en `{ type: 'encrypted', iv, data }`.
-
-### 3. Mensajes de señalización
-
-| Tipo | Acción |
-|------|--------|
-| `hello` | Registra el cliente con su nombre, tipo de dispositivo e `isServer`. Responde `welcome` con el `clientId`. |
-| `set-receiving` | Actualiza `client.receiving`. Notifica a todos con `broadcastClients()`. |
-| `rename` | Actualiza `client.appName`. Notifica a todos. |
-| `send-request` | Verifica que el receptor esté online. Crea la `TransferSession`. Reenvía la solicitud al receptor. |
-| `send-accept` | Valida que quien acepta es el receptor de esa sesión. Notifica al remitente para iniciar el envío. |
-| `send-reject` | Notifica al remitente y limpia la sesión. |
-| `send-cancel` | Puede iniciarlo cualquiera. Notifica al otro extremo y limpia la sesión. |
-| `send-complete` | Solo el remitente puede enviarlo. Notifica al receptor y limpia la sesión. |
-
-### 4. Mensajes binarios (chunks de archivo)
-
-```ts
-if (isBinary) {
-  if (!authenticated) { ws.close(4401, 'Unauthorized'); return; }
-  // Si hay cipher, descifra primero
-  const transferId = payload.subarray(0, 36).toString('ascii').trim();
-  const transferSess = getTransfer(transferId);
-  const receiver = getClient(transferSess.receiverClientId);
-  // Si el receptor tiene cipher, cifra para él antes de reenviar
-  receiver.ws.send(payload, { binary: true });
-}
-```
-
-Los primeros 36 bytes del buffer binario son el `transferId` (UUID ASCII). El servidor lo extrae para enrutar el chunk al receptor correcto sin inspeccionar el contenido.
-
-Si el sender tiene cifrado activo, el chunk llega cifrado con su clave de sesión → el servidor lo descifra. Si el receptor tiene cifrado activo, el servidor lo vuelve a cifrar con la clave del receptor antes de reenviarlo. Esto permite que cada par de dispositivos tenga su propio canal E2E independiente.
+Cada conexión WebSocket corre en su propia goroutine (lanzada por `net/http`). El bucle `for { ReadMessage() }` bloquea hasta recibir un frame o error de red.
 
 ---
 
-## Protocolo completo de una transferencia
+## Upgrader
 
+```go
+var upgrader = websocket.Upgrader{
+    CheckOrigin:     func(r *http.Request) bool { return true },
+    ReadBufferSize:  256 * 1024,
+    WriteBufferSize: 256 * 1024,
+}
 ```
-Remitente              Servidor relay              Receptor
-    |                       |                          |
-    |-- send-request -----→ |                          |
-    |                       |-- send-request --------→ |
-    |                       | ←------- send-accept --- |
-    | ←--- send-accept ---- |                          |
-    |-- [chunk binario] --→ |-- [chunk binario] -----→ |
-    |         ...           |           ...            |
-    |-- send-complete ----→ |-- send-complete -------→ |
-```
+
+`CheckOrigin: true` permite cualquier origen (mismo comportamiento que `cors({ origin: '*' })` en Express). Los buffers de 256 KB coinciden con el tamaño de chunk P2P.
 
 ---
 
-## Evento `close`
+## Flujo de autenticación
 
-```ts
-ws.on('close', () => {
-  if (client) {
-    removeClient(clientId);
-    broadcastClients();
-  }
-});
+El primer mensaje **debe** ser de tipo `auth`. Cualquier otro tipo cierra la conexión con código `4401`.
+
+```
+cliente → { type: "auth", token: "..." }
+servidor → { type: "auth_ok" }          // si el token es válido
+servidor → WS Close 4401                // si el token es inválido
 ```
 
-Al cerrar la conexión se elimina el cliente del registro y se notifica a todos. El `if (client)` protege el caso donde la conexión se cierra antes del mensaje `hello`.
+`writeRawJSON` escribe directamente a `conn` sin `writeMu` porque en este punto no hay escrituras concurrentes posibles (el cliente aún no está registrado en el registry).
+
+---
+
+## Key-exchange E2E
+
+```
+cliente → { type: "key-exchange", publicKey: "<base64>" }
+servidor → { type: "key-exchange", publicKey: "<base64>" }
+```
+
+`session.HandleKeyExchange(strVal(msg, "publicKey"))` realiza el ECDH y guarda el cipher derivado en `session.Cipher`. Si el cliente ya envió `hello`, se asigna también a `client.Cipher`. Después del key-exchange, `SendJSON` cifra automáticamente todos los mensajes salientes.
+
+---
+
+## Descifrado de frames entrantes
+
+```go
+if authenticated && session.Cipher != nil && strVal(msg, "type") == "encrypted" {
+    plaintext, _ := session.Cipher.DecryptJSON(strVal(msg, "iv"), strVal(msg, "data"))
+    json.Unmarshal([]byte(plaintext), &msg)
+}
+```
+
+Antes del `switch` de señalización, si el frame está cifrado, se descifra y se reemplaza `msg` con el contenido en claro. El resto del código de señalización no necesita saber si el mensaje venía cifrado o no.
+
+---
+
+## Protocolo de señalización (mensajes JSON)
+
+| Tipo | Dirección | Descripción |
+| :--- | :--- | :--- |
+| `hello` | cliente → servidor | Registra el cliente: `appName`, `deviceType`, `isServer` |
+| `welcome` | servidor → cliente | Confirma registro, devuelve `clientId` |
+| `clients` | servidor → todos | Lista completa de clientes conectados (broadcast) |
+| `set-receiving` | cliente → servidor | Marca/desmarca al cliente como receptor disponible |
+| `rename` | cliente → servidor | Cambia el `appName` del cliente |
+| `send-request` | cliente → servidor | Inicia una transferencia: `to`, `fileName`, `fileSize`, `mimeType` |
+| `send-accept` | receptor → servidor | Acepta la transferencia |
+| `send-reject` | receptor → servidor | Rechaza la transferencia |
+| `send-cancel` | cualquiera → servidor | Cancela la transferencia en curso |
+| `send-complete` | emisor → servidor | Señaliza que todos los chunks se enviaron |
+| `files-changed` | servidor → todos | Notifica que la lista de archivos cambió |
+
+---
+
+## Relay de chunks binarios
+
+```go
+// Frame: [36 bytes ASCII transferId] + [chunk data]
+payload := data
+if session.Cipher != nil {
+    payload, _ = session.Cipher.DecryptBinary(data)
+}
+
+transferID := strings.TrimRight(string(payload[:36]), " \x00")
+t          := Default.GetTransfer(transferID)
+receiver   := Default.Get(t.ReceiverClientID)
+
+if receiver.Cipher != nil {
+    encrypted, _ := receiver.Cipher.EncryptBinary(payload)
+    receiver.SendBinary(encrypted)
+} else {
+    receiver.SendBinary(payload)
+}
+```
+
+El servidor actúa como relay transparente:
+1. Descifra el chunk si el emisor tiene E2E activo.
+2. Extrae el `transferId` de los primeros 36 bytes para enrutar al receptor.
+3. Re-cifra el chunk con la clave de sesión del receptor si este tiene E2E activo.
+4. Envía el chunk al receptor.
+
+Esto permite que emisor y receptor tengan claves de sesión independientes (negociadas por separado con el servidor).
+
+---
+
+## Helpers
+
+```go
+func newUUID() string // UUID v4 con crypto/rand (sin dependencias externas)
+func extractIP(r *http.Request) string // normaliza IPv4-mapped, fallback a LAN IP para loopback
+func strVal(m map[string]any, key string) string
+func boolVal(m map[string]any, key string) bool
+func int64Val(m map[string]any, key string) int64
+```
+
+`int64Val` convierte `float64` (tipo por defecto de `json.Unmarshal` para números) a `int64`, necesario para `fileSize` que puede superar `2^31`.

@@ -1,7 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileItem } from './FileItem';
 import type { FileInfo } from './files.api';
 import { Search, List, LayoutGrid } from 'lucide-react';
+
+// Virtualize list view when there are more rows than this threshold.
+const VIRTUAL_THRESHOLD = 30;
+
+// Row height in px — matches padding + font-size from .file-row CSS.
+const ROW_HEIGHT = 53;
 
 interface FileListProps {
   files: FileInfo[];
@@ -13,15 +20,32 @@ interface FileListProps {
 }
 
 export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canDelete, previewMaxMb }: FileListProps) {
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [search, setSearch] = useState('');
+  const [viewMode, setViewMode]   = useState<'list' | 'grid'>('list');
+  const [inputValue, setInputValue] = useState('');
+  const [search, setSearch]       = useState('');
+  const tableWrapperRef           = useRef<HTMLDivElement>(null);
 
-  // Filter files by search query (frontend only)
+  // Debounce: only update the search query 200 ms after the user stops typing.
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(inputValue), 200);
+    return () => clearTimeout(id);
+  }, [inputValue]);
+
   const filteredFiles = useMemo(() => {
     if (!search.trim()) return files;
     const query = search.toLowerCase();
     return files.filter((f) => f.name.toLowerCase().includes(query));
   }, [files, search]);
+
+  const useVirtual = viewMode === 'list' && filteredFiles.length > VIRTUAL_THRESHOLD;
+
+  const rowVirtualizer = useVirtualizer({
+    count:           useVirtual ? filteredFiles.length : 0,
+    getScrollElement: () => tableWrapperRef.current,
+    estimateSize:    () => ROW_HEIGHT,
+    overscan:        8,
+    enabled:         useVirtual,
+  });
 
   if (loading) {
     return (
@@ -42,14 +66,14 @@ export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canD
             type="text"
             placeholder="Buscar archivos..."
             className="file-list__search-input"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
             id="search-input"
           />
-          {search && (
+          {inputValue && (
             <button
               className="file-list__search-clear"
-              onClick={() => setSearch('')}
+              onClick={() => { setInputValue(''); setSearch(''); }}
               aria-label="Clear search"
             >
               ✕
@@ -105,7 +129,10 @@ export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canD
 
       {/* List view */}
       {filteredFiles.length > 0 && viewMode === 'list' && (
-        <div className="file-list__table-wrapper">
+        <div
+          ref={tableWrapperRef}
+          className={`file-list__table-wrapper${useVirtual ? ' file-list__table-wrapper--virtual' : ''}`}
+        >
           <table className="file-list__table" id="file-table">
             <thead>
               <tr>
@@ -115,17 +142,41 @@ export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canD
               </tr>
             </thead>
             <tbody>
-              {filteredFiles.map((file) => (
-                <FileItem
-                  key={file.name}
-                  file={file}
-                  onRequestDelete={onRequestDelete}
-                  viewMode="list"
-                  getDownloadUrl={getDownloadUrl}
-                  canDelete={canDelete}
-                  previewMaxMb={previewMaxMb}
-                />
-              ))}
+              {useVirtual ? (
+                <>
+                  {/* Top spacer */}
+                  <tr style={{ height: rowVirtualizer.getVirtualItems()[0]?.start ?? 0 }} />
+                  {rowVirtualizer.getVirtualItems().map((vRow) => (
+                    <FileItem
+                      key={filteredFiles[vRow.index].name}
+                      file={filteredFiles[vRow.index]}
+                      onRequestDelete={onRequestDelete}
+                      viewMode="list"
+                      getDownloadUrl={getDownloadUrl}
+                      canDelete={canDelete}
+                      previewMaxMb={previewMaxMb}
+                    />
+                  ))}
+                  {/* Bottom spacer */}
+                  {(() => {
+                    const items = rowVirtualizer.getVirtualItems();
+                    const lastEnd = items.length > 0 ? items[items.length - 1].end : 0;
+                    return <tr style={{ height: rowVirtualizer.getTotalSize() - lastEnd }} />;
+                  })()}
+                </>
+              ) : (
+                filteredFiles.map((file) => (
+                  <FileItem
+                    key={file.name}
+                    file={file}
+                    onRequestDelete={onRequestDelete}
+                    viewMode="list"
+                    getDownloadUrl={getDownloadUrl}
+                    canDelete={canDelete}
+                    previewMaxMb={previewMaxMb}
+                  />
+                ))
+              )}
             </tbody>
           </table>
         </div>

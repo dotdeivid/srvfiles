@@ -1,86 +1,153 @@
-# index.ts
+# main.go
 
-**Archivo:** `src/index.ts`
-**Rol:** Punto de entrada del servidor. Crea la app Express, levanta los servidores HTTP y HTTPS con sus WebSocketServers asociados, e imprime las URLs y el PIN al arrancar.
+**Archivo:** `cmd/server/main.go`
+**Rol:** Punto de entrada del servidor. Inicializa el storage, configura el router chi con todas las rutas, levanta los servidores HTTP y HTTPS, imprime el banner de arranque y gestiona el shutdown limpio.
 
 ---
 
-## Creación de la app Express
+## Inicialización
 
-```ts
-const app = createApp();
+```go
+storage.Init()
+files.OnFilesChanged = transfer.Default.BroadcastFilesChanged
 ```
 
-La app Express se crea con `createApp()` (definida en `app.ts`) en lugar de configurarla aquí directamente. Esto separa la configuración de rutas del levantamiento de servidores, lo que permite importar `createApp` en tests sin arrancar puertos reales.
+`storage.Init()` crea el directorio de uploads si no existe. Luego se conecta la variable `files.OnFilesChanged` con `transfer.Default.BroadcastFilesChanged` para que las operaciones de archivos (upload, delete) notifiquen automáticamente a todos los clientes WebSocket conectados.
 
 ---
 
-## Servidor HTTP (puerto 3001)
+## Router
 
-```ts
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
-wss.on('connection', handleConnection);
-
-server.listen(PORT, HOST, () => {
-  log.debug('index.ts', 'HTTP server listening', { port: PORT });
-});
+```go
+r := chi.NewRouter()
+r.Use(middleware.RealIP)
+r.Use(middleware.Recoverer)
+r.Use(corsMiddleware)
 ```
 
-El servidor HTTP escucha en `PORT` (por defecto `3001`) en todas las interfaces (`HOST = '0.0.0.0'`). Lo usan la webview de Tauri y la app Flutter, que no necesitan TLS porque conectan localmente o por canal de confianza.
+Se usa [chi](https://github.com/go-chi/chi) como router HTTP. Los tres middlewares globales son:
 
-El `WebSocketServer` se adjunta al mismo servidor HTTP para que las conexiones WebSocket (`/ws`) compartan el puerto 3001 sin abrir uno adicional.
+- `RealIP`: extrae la IP real del cliente de headers como `X-Forwarded-For`.
+- `Recoverer`: captura cualquier `panic` en los handlers y devuelve `500` en lugar de crashar el proceso.
+- `corsMiddleware`: añade los headers CORS necesarios para el frontend React y la app Flutter.
 
----
+### Rutas públicas
 
-## Servidor HTTPS (puerto 3002)
-
-```ts
-void (async () => {
-  const cert = await getOrCreateCert(CERTS_DIR);
-  const httpsServer = https.createServer({ key: cert.key, cert: cert.cert }, app);
-
-  const wssHttps = new WebSocketServer({ server: httpsServer, path: '/ws' });
-  wssHttps.on('connection', handleConnection);
-
-  httpsServer.listen(HTTPS_PORT, HOST, () => {
-    const lanIp = getLanIp();
-    const pin = generatePin();
-    console.log(`   Local (Tauri):  http://localhost:${PORT}`);
-    console.log(`   Network (web):  https://${lanIp}:${HTTPS_PORT}`);
-    console.log(`   PIN: ${pin}`);
-  });
-})();
+```go
+r.Get("/api/health", health.Handler)
+r.Post("/api/auth", auth.Login)
+r.Get("/api/pin", auth.PinHandler)
+r.Get("/ws", transfer.HandleConnection)
 ```
 
-El servidor HTTPS escucha en `HTTPS_PORT` (por defecto `PORT + 1 = 3002`). Es necesario para navegadores externos en la red local, ya que los navegadores modernos solo exponen `crypto.subtle` (requerido para el cifrado E2E del P2P) en contextos seguros (`localhost` o HTTPS).
+No requieren token. `/ws` es el WebSocket relay — la autenticación ocurre a nivel de protocolo WS (primer mensaje `auth`).
 
-Ambos servidores comparten exactamente el mismo objeto `app` y el mismo `handleConnection` — la diferencia es solo el transporte (HTTP vs HTTPS).
+### Rutas protegidas
 
-### Certificado TLS
-
-`getOrCreateCert(CERTS_DIR)` genera un certificado autofirmado RSA-2048/SHA-256 la primera vez y lo persiste en `backend/certs/`. En arranques posteriores lo reutiliza. Los navegadores muestran advertencia la primera vez; el usuario debe aceptarla manualmente.
-
-### Generación del PIN
-
-`generatePin()` se llama dentro del callback de `httpsServer.listen` — es decir, una sola vez al arrancar, después de que el servidor HTTPS ya está escuchando. El PIN se imprime con el formato especial `PIN: XXXXXX` para que el IPC de Tauri pueda parsearlo.
-
----
-
-## Manejo de errores y shutdown limpio
-
-```ts
-server.on('error', (err) => { log.error('index.ts', 'Error al iniciar el servidor HTTP', { error: String(err) }); });
-
-process.on('SIGTERM', () => { resetAuth(); process.exit(0); });
-process.on('SIGINT',  () => { resetAuth(); process.exit(0); });
-process.on('uncaughtException', (err) => { log.error('index.ts', 'Excepción no capturada', { error: String(err) }); });
+```go
+r.Group(func(r chi.Router) {
+    r.Use(auth.RequireAuth)
+    r.Get("/api/config", configapi.Handler)
+    r.Get("/api/discovery/scan", discovery.Handler)
+    r.Get("/api/files", files.List)
+    r.Post("/api/files/upload", files.Upload)
+    // ...
+})
 ```
 
-En SIGTERM y SIGINT (Ctrl+C o señal de proceso) se llama `resetAuth()` para borrar de memoria el PIN, los tokens de sesión y los contadores de rate limit antes de salir. Las excepciones no capturadas se loguean para debugging.
+El grupo aplica `auth.RequireAuth` a todas las rutas del bloque. chi evalúa los middlewares del grupo antes de llamar al handler.
+
+### SPA fallback
+
+```go
+r.Handle("/*", newSPAHandler())
+```
+
+`newSPAHandler()` es una función definida en `spa_dev.go` o `spa_embed.go` según el build tag. Sirve los archivos estáticos del frontend y hace fallback a `index.html` para React Router.
 
 ---
 
-## ¿Por qué `void (async () => { ... })()`?
+## Servidor HTTP
 
-TypeScript prohíbe usar `await` en el top level de un módulo CommonJS. Se usa una IIFE async (`(async () => { ... })()`) para poder esperar `getOrCreateCert`. El prefijo `void` descarta la promesa devuelta sin dejarla flotando (silencia la advertencia de `@typescript-eslint/no-floating-promises`).
+```go
+httpAddr  := fmt.Sprintf("%s:%d", config.Host, config.Port)
+httpServer := &http.Server{Addr: httpAddr, Handler: r}
+go func() {
+    if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+        logger.Log.Error("main.go", "HTTP server error", "error", err)
+        os.Exit(1)
+    }
+}()
+```
+
+Escucha en `HOST:PORT` (por defecto `0.0.0.0:3001`). Lo usan la webview de Tauri y la app Flutter. Corre en su propia goroutine para no bloquear la goroutine principal.
+
+---
+
+## Servidor HTTPS
+
+```go
+httpsServer := startHTTPS(r, lanIp)
+```
+
+`startHTTPS` obtiene o genera el certificado TLS autofirmado via `cert.GetOrCreateCert`, crea un listener TCP, lo envuelve con `tls.NewListener` y sirve con el mismo router. Si falla la generación del certificado o el bind del puerto, degrada a modo HTTP-only devolviendo `nil`.
+
+El enfoque `net.Listen + tls.NewListener` permite pasar el certificado directamente como `tls.Certificate` (en memoria) sin necesitar archivos `.pem` en disco como parámetros de `ListenAndServeTLS`.
+
+---
+
+## Banner de arranque
+
+```go
+fmt.Printf("\n🗂️  %s running!\n", config.AppName)
+fmt.Printf("   Local (Tauri):  http://localhost:%d\n", config.Port)
+fmt.Printf("   Network (web):  https://%s:%d\n", lanIp, config.HttpsPort)
+fmt.Printf("   Max file size:  %d MB\n", config.MaxFileSizeMB)
+// Formato especial para el IPC de Tauri — NO CAMBIAR esta línea
+fmt.Printf("   PIN: %s\n", pin)
+```
+
+La línea del PIN **debe mantener exactamente este formato** (`   PIN: XXXXXX` con 3 espacios) ya que el proceso Tauri parsea stdout buscando ese patrón para extraer el PIN sin que el usuario lo escriba.
+
+---
+
+## Shutdown limpio
+
+```go
+quit := make(chan os.Signal, 1)
+signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
+<-quit
+
+auth.ResetAuth()
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+_ = httpServer.Shutdown(ctx)
+if httpsServer != nil {
+    _ = httpsServer.Shutdown(ctx)
+}
+```
+
+Al recibir SIGTERM o SIGINT:
+1. `auth.ResetAuth()` borra el PIN, tokens y rate limits de memoria.
+2. `Shutdown(ctx)` espera hasta 5 segundos a que las conexiones activas terminen antes de cerrar el servidor.
+
+---
+
+## CORS middleware
+
+```go
+func corsMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "*")
+        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-SrvFiles-Token")
+        if r.Method == http.MethodOptions {
+            w.WriteHeader(http.StatusNoContent)
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
+}
+```
+
+Permite cualquier origen (`*`) ya que los clientes son apps locales (Tauri, Flutter, navegadores LAN). Responde a preflight OPTIONS con `204 No Content` sin pasar al handler.

@@ -23,7 +23,7 @@ Levantás SrvFiles en una computadora — vía web o como app de escritorio (Tau
 
 | Componente | Descripción |
 |------------|-------------|
-| **Backend** | Node.js · Express · WebSocket |
+| **Backend** | Go · chi · gorilla/websocket — binario único ~8 MB, arranque <10 ms |
 | **Frontend** | React · Vite — accesible desde cualquier navegador |
 | **Desktop** | Tauri 2 — empaqueta backend + frontend como app nativa |
 | **Mobile** | Flutter Android — cliente, servidor o relay P2P puro |
@@ -36,13 +36,17 @@ Levantás SrvFiles en una computadora — vía web o como app de escritorio (Tau
 
 | Herramienta | Versión |
 |-------------|---------|
+| Go | 1.22+ |
 | Node.js | 18+ |
 | npm | 9+ |
 | Rust + cargo | stable (solo Tauri) |
 
 ```bash
-# Instalar todas las dependencias
+# Instalar dependencias de Node
 npm run install:all
+
+# Descargar dependencias de Go
+cd backend && go mod download && cd ..
 ```
 
 ### Modo web (desarrollo)
@@ -51,16 +55,16 @@ npm run install:all
 npm run dev
 ```
 
-Backend en `http://localhost:3001`, frontend en `http://localhost:5173` con hot reload.
+Backend Go en `http://localhost:3001`, frontend en `http://localhost:5173` con hot reload.
 Otros dispositivos acceden por `https://<tu-ip>:3002` (la primera vez hay que aceptar el certificado autofirmado en el navegador).
 
 ### Modo desktop / Tauri (desarrollo)
 
 ```bash
-# Primera vez o tras cambios en el backend — compilar el sidecar
+# Primera vez o tras cambios en el backend — compilar el sidecar Go
 npm run build:sidecar
 
-# Levantar Tauri con hot reload
+# Levantar Tauri con hot reload en el frontend
 npm run tauri:dev
 ```
 
@@ -89,7 +93,7 @@ Dispara GitHub Actions y publica los instaladores en la sección Releases del re
 |-----------|------------|-------------|
 | **Imagen** | jpg, jpeg, png, gif, webp, bmp, ico | `<img>` + zoom con scroll |
 | **SVG** | svg | `<img>` nativo |
-| **Video** | mp4, mov, m4v, webm | `<video>` con controles nativos |
+| **Video** | mp4, mov, m4v, webm | Vidstack player (controles modernos) |
 | **Audio** | mp3, wav, aac, m4a, ogg, flac, opus | `<audio>` con controles nativos |
 | **PDF** | pdf | `<iframe>` inline |
 | **Texto / Código** | txt, md, json, xml, csv, yaml, yml, html, js, ts, dart, py, go, rs, c, cpp, h, css, sh, bash | `<pre>` scrollable monospace |
@@ -101,7 +105,7 @@ Archivos que superen el límite `PREVIEW_MAX_FILE_SIZE_MB` (default 1 GB) no se 
 
 ## Variables de entorno
 
-El archivo de referencia completo está en `backend/.env.example`.
+El archivo de referencia completo está en `backend/internal/config/config.go`.
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
@@ -112,6 +116,7 @@ El archivo de referencia completo está en `backend/.env.example`.
 | `PREVIEW_MAX_FILE_SIZE_MB` | `1024` | Límite para previsualización (MB) |
 | `UPLOADS_DIR` | `<cwd>/uploads` | Carpeta de almacenamiento |
 | `HTTPS_PORT` | `PORT+1` | Puerto HTTPS para navegadores externos |
+| `FRONTEND_PORT` | `5173` | Puerto de Vite en desarrollo (usado en config CORS) |
 | `CERTS_DIR` | `<cwd>/certs` | Carpeta del certificado TLS (auto-generado) |
 | `VITE_BACKEND_PORT` | `3001` | Puerto del backend (frontend) |
 

@@ -1,115 +1,123 @@
-# auth.service.ts
+# auth/service.go
 
-**Archivo:** `src/features/auth/auth.service.ts`
-**Rol:** Gestiona el ciclo de vida del PIN y las sesiones en memoria. Expone funciones puras para generar, validar y limpiar el estado de autenticación, incluyendo rate limiting por IP.
+**Archivo:** `internal/auth/service.go`
+**Rol:** Gestiona el ciclo de vida del PIN y las sesiones en memoria. Expone funciones para generar, validar y limpiar el estado de autenticación, incluyendo rate limiting por IP. Todo el acceso al estado está protegido por `sync.RWMutex`.
 
 ---
 
-## Estado en módulo (in-memory)
+## Estado en memoria
 
-```ts
-let pinHash: string | null = null;
-let pinPlain: string | null = null;
-const sessions = new Map<string, true>();
-const rateLimitMap = new Map<string, { count: number; blockedUntil: number }>();
+```go
+var (
+    mu         sync.RWMutex
+    pinHash    string
+    pinPlain   string
+    sessions   = make(map[string]struct{})
+    rateLimit  = make(map[string]*rateLimitEntry)
+)
+
+type rateLimitEntry struct {
+    count        int
+    blockedUntil time.Time
+}
 ```
 
-Todo el estado de auth vive en estas cuatro variables del módulo. Se reinicia con cada arranque del proceso y se puede limpiar explícitamente con `resetAuth()`.
+- `pinHash`: SHA-256 del PIN en hex. Nunca se compara texto plano contra texto plano.
+- `pinPlain`: PIN en claro. Solo lo lee el endpoint `/api/pin` (exclusivo de localhost).
+- `sessions`: set de tokens UUID activos. Se usa `struct{}` como valor para no desperdiciar memoria.
+- `rateLimit`: contador de intentos fallidos y timestamp de fin de bloqueo por IP.
 
-- `pinHash`: SHA-256 del PIN actual. Nunca se compara texto plano contra texto plano.
-- `pinPlain`: el PIN en texto plano. Solo lo lee el endpoint `/api/pin` (exclusivo de localhost).
-- `sessions`: `Map` de tokens UUID activos. El valor es simplemente `true` — la existencia de la clave es lo que importa.
-- `rateLimitMap`: contador de intentos fallidos por IP y timestamp de bloqueo.
+`mu` protege todas las variables. Las lecturas usan `RLock`/`RUnlock` y las escrituras `Lock`/`Unlock`.
 
 ---
 
 ## Generación del PIN
 
-```ts
-export function generatePin(): string {
-  const pin = String(crypto.randomInt(100_000, 1_000_000));
-  pinHash = crypto.createHash('sha256').update(pin).digest('hex');
-  pinPlain = pin;
-  return pin;
+```go
+func GeneratePin() string {
+    n, _ := rand.Int(rand.Reader, big.NewInt(900_000))
+    pin   := fmt.Sprintf("%06d", n.Int64()+100_000)
+    h     := sha256.Sum256([]byte(pin))
+
+    mu.Lock()
+    pinHash  = hex.EncodeToString(h[:])
+    pinPlain = pin
+    mu.Unlock()
+
+    return pin
 }
 ```
 
-Genera un PIN de 6 dígitos usando `crypto.randomInt` (criptográficamente seguro). Almacena el hash SHA-256 para comparaciones posteriores y el texto plano para el endpoint localhost. Devuelve el texto plano para que `index.ts` lo imprima al arrancar.
-
-`crypto.randomInt(100_000, 1_000_000)` genera un número en `[100000, 1000000)` — siempre 6 dígitos, con el `0` inicial preservado gracias al `String()`.
+`rand.Int` con `crypto/rand` es criptográficamente seguro. El rango `[100000, 999999]` garantiza siempre 6 dígitos. El PIN se almacena en texto plano (para el endpoint localhost) y como hash SHA-256 (para las comparaciones).
 
 ---
 
-## `getPin`
+## `ValidatePin`
 
-```ts
-export function getPin(): string | null {
-  return pinPlain;
+```go
+func ValidatePin(input string) bool {
+    h := sha256.Sum256([]byte(input))
+    mu.RLock()
+    defer mu.RUnlock()
+    return pinHash != "" && hex.EncodeToString(h[:]) == pinHash
 }
 ```
 
-Acceso de solo lectura al PIN en texto plano. Usado exclusivamente por el endpoint `/api/pin` de `app.ts` para que Tauri pueda leerlo sin que el usuario lo escriba.
-
----
-
-## `validatePin`
-
-```ts
-export function validatePin(input: string): boolean {
-  if (!pinHash) return false;
-  const h = crypto.createHash('sha256').update(input).digest('hex');
-  return h === pinHash;
-}
-```
-
-Compara hasheando el input en lugar de comparar texto plano contra texto plano. Si `pinHash` es `null` (el servidor aún no generó PIN), devuelve `false`.
+Hashea el input y compara. Si `pinHash` está vacío (el servidor aún no generó PIN), devuelve `false`.
 
 ---
 
 ## Gestión de sesiones
 
-```ts
-export function createSession(): string {
-  const token = crypto.randomUUID();
-  sessions.set(token, true);
-  return token;
+```go
+func CreateSession() string {
+    token := newUUID()
+    mu.Lock()
+    sessions[token] = struct{}{}
+    mu.Unlock()
+    return token
 }
 
-export function validateToken(token: string | undefined): boolean {
-  return !!token && sessions.has(token);
+func ValidateToken(token string) bool {
+    mu.RLock()
+    defer mu.RUnlock()
+    _, ok := sessions[token]
+    return ok
 }
 ```
 
-`createSession` genera un UUID v4 criptográficamente seguro y lo registra. `validateToken` verifica que el token exista en el `Map`; acepta `undefined` para no tener que verificar antes de llamarlo.
+`CreateSession` genera un UUID v4 con `crypto/rand` (sin dependencias externas) y lo registra. `ValidateToken` verifica la existencia en el map.
 
 ---
 
 ## Rate limiting
 
-```ts
-const MAX_ATTEMPTS = 5;
-const BLOCK_MS = 60_000;
+```go
+const (
+    maxAttempts    = 5
+    blockDuration  = 60 * time.Second
+)
 
-export function checkRateLimit(ip: string): { blocked: boolean } { ... }
-export function recordFailedAttempt(ip: string): void { ... }
-export function clearFailedAttempts(ip: string): void { ... }
+func CheckRateLimit(ip string) bool   // true = bloqueado
+func RecordFailedAttempt(ip string)
+func ClearFailedAttempts(ip string)
 ```
 
-Después de 5 intentos fallidos desde la misma IP, se bloquea esa IP durante 60 segundos. El bloqueo expira automáticamente: `checkRateLimit` limpia la entrada del `Map` cuando `blockedUntil` ya pasó.
-
-`clearFailedAttempts` se llama en autenticación exitosa para no penalizar al usuario si escribe mal el PIN unas veces antes de acertar.
+Después de 5 intentos fallidos desde la misma IP, se bloquea durante 60 segundos. `CheckRateLimit` limpia la entrada del map cuando `blockedUntil` ya pasó (auto-expiración sin goroutines adicionales). `ClearFailedAttempts` se llama en login exitoso.
 
 ---
 
-## `resetAuth`
+## `ResetAuth`
 
-```ts
-export function resetAuth(): void {
-  pinHash = null;
-  pinPlain = null;
-  sessions.clear();
-  rateLimitMap.clear();
+```go
+func ResetAuth() {
+    mu.Lock()
+    defer mu.Unlock()
+    pinHash  = ""
+    pinPlain = ""
+    sessions  = make(map[string]struct{})
+    rateLimit = make(map[string]*rateLimitEntry)
 }
 ```
 
-Limpia todo el estado de autenticación. Se llama en `index.ts` al recibir SIGTERM o SIGINT para que el PIN y los tokens no queden en memoria si el proceso se reutiliza.
+Borra todo el estado de autenticación. Se llama desde `main.go` al recibir SIGTERM/SIGINT para que el PIN y los tokens no persistan si el proceso se reutiliza.

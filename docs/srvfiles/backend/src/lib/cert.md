@@ -1,64 +1,59 @@
-# cert.ts
+# cert.go
 
-**Archivo:** `src/lib/cert.ts`
-**Rol:** Gestiona el certificado TLS autofirmado para el servidor HTTPS. Carga el certificado existente del disco si está disponible, o genera uno nuevo y lo persiste.
+**Archivo:** `internal/cert/cert.go`
+**Rol:** Gestiona el certificado TLS autofirmado para el servidor HTTPS. Carga el certificado existente de disco o genera uno nuevo RSA-2048 válido por 10 años.
 
 ---
 
-## `getOrCreateCert`
+## `GetOrCreateCert`
 
-```ts
-export async function getOrCreateCert(certsDir: string): Promise<CertBundle> {
-  const keyPath  = path.join(certsDir, 'key.pem');
-  const certPath = path.join(certsDir, 'cert.pem');
+```go
+func GetOrCreateCert(certsDir string) (tls.Certificate, error)
+```
 
-  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
-    log.debug('cert.ts', 'Loading existing TLS certificate', { certsDir });
-    return {
-      key:  fs.readFileSync(keyPath),
-      cert: fs.readFileSync(certPath),
-    };
-  }
+Punto de entrada único. Recibe el directorio donde persisten `key.pem` y `cert.pem`.
 
-  // Genera nuevo certificado autofirmado
-  const pems = await selfsigned.generate(attrs, {
-    keySize: 2048,
-    keyType: 'rsa',
-    notAfterDate: tenYears,
-  });
+### Carga del certificado existente
 
-  fs.mkdirSync(certsDir, { recursive: true });
-  fs.writeFileSync(keyPath,  pems.private, { mode: 0o600 });
-  fs.writeFileSync(certPath, pems.cert);
-
-  return { key: Buffer.from(pems.private), cert: Buffer.from(pems.cert) };
+```go
+if fileExists(keyPath) && fileExists(certPath) {
+    return tls.LoadX509KeyPair(certPath, keyPath)
 }
 ```
 
-### Parámetro
+Si ambos archivos existen, los carga directamente con `tls.LoadX509KeyPair`. No verifica la fecha de expiración — se asume que el certificado de 10 años no va a expirar en el ciclo de vida de la app.
 
-- **`certsDir`**: ruta al directorio donde se persisten los archivos `key.pem` y `cert.pem`. Viene de `CERTS_DIR` en `config/index.ts`.
+### Generación de un certificado nuevo
 
-### Comportamiento
+```go
+privateKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 
-1. **Si existen `key.pem` y `cert.pem`**: los carga y los devuelve sin regenerar. El certificado persiste entre reinicios del servidor.
-2. **Si no existen**: genera un nuevo certificado RSA-2048/SHA-256 autofirmado con la librería `selfsigned`, válido por 10 años, con `commonName: 'SrvFiles'`. Lo guarda con permisos `0o600` (solo el propietario puede leer la clave privada) y devuelve el bundle.
-
-### ¿Por qué autofirmado y no Let's Encrypt?
-
-SrvFiles corre en una red local privada sin dominio público. Let's Encrypt requiere acceso HTTP desde internet para la verificación de dominio. Un certificado autofirmado es la única opción práctica. Los navegadores muestran una advertencia la primera vez — el usuario debe aceptarla manualmente.
-
-### ¿Por qué 10 años de validez?
-
-Para evitar que el certificado expire durante el uso normal. Al ser autofirmado en un contexto local, la renovación no aporta beneficios de seguridad reales.
-
-### Tipo `CertBundle`
-
-```ts
-interface CertBundle {
-  key: Buffer;
-  cert: Buffer;
+template := &x509.Certificate{
+    SerialNumber: big.NewInt(1),
+    Subject:      pkix.Name{CommonName: "SrvFiles"},
+    NotBefore:    time.Now(),
+    NotAfter:     time.Now().AddDate(10, 0, 0),
+    KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+    ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+    BasicConstraintsValid: true,
 }
+
+certDER, _ := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
 ```
 
-Forma que espera `https.createServer({ key, cert }, app)` de Node.js.
+Genera una clave RSA-2048 con `crypto/rand` (segura criptográficamente). El certificado es autofirmado (la plantilla actúa como su propio emisor). `KeyUsage` y `ExtKeyUsage` son los mínimos necesarios para TLS server.
+
+### Persistencia
+
+```go
+os.WriteFile(keyPath, keyPEM, 0600)   // Solo lectura del propietario
+os.WriteFile(certPath, certPEM, 0644) // Legible por todos
+```
+
+La clave privada se guarda con permisos `0600` (solo lectura/escritura del propietario del proceso). El certificado público con `0644`. Equivale al comportamiento de `lib/cert.ts` en el backend Node.js.
+
+---
+
+## ¿Certificado autofirmado?
+
+Los navegadores muestran una advertencia la primera vez que se conectan por HTTPS. El usuario debe aceptarla. Esto es inevitable para un servidor local sin dominio público — no se puede obtener un certificado Let's Encrypt para una IP de LAN. La alternativa sería añadir el certificado al trust store del sistema operativo, pero eso requiere permisos de administrador y es demasiado invasivo para una app de usuario.

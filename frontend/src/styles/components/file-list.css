@@ -133,6 +133,12 @@
   overflow: hidden;
 }
 
+/* Virtualized mode: fixed height with internal scroll */
+.file-list__table-wrapper--virtual {
+  overflow-y: auto;
+  max-height: min(65vh, 720px);
+}
+
 .file-list__table {
   width: 100%;
   border-collapse: collapse;

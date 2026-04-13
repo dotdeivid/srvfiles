@@ -1,13 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import type { FileInfo } from '../files/files.api';
 import { getFileCategory } from '../../shared/utils/fileTypeHelper';
-import { ImagePreview } from './previews/ImagePreview';
-import { VideoPreview } from './previews/VideoPreview';
-import { AudioPreview } from './previews/AudioPreview';
-import { PdfPreview } from './previews/PdfPreview';
-import { TextPreview } from './previews/TextPreview';
-import { UnknownPreview } from './previews/UnknownPreview';
 import { X } from 'lucide-react';
+
+// Each preview is loaded on demand — only when a file of that type is opened.
+const ImagePreview   = lazy(() => import('./previews/ImagePreview').then(m => ({ default: m.ImagePreview })));
+const VideoPreview   = lazy(() => import('./previews/VideoPreview').then(m => ({ default: m.VideoPreview })));
+const AudioPreview   = lazy(() => import('./previews/AudioPreview').then(m => ({ default: m.AudioPreview })));
+const PdfPreview     = lazy(() => import('./previews/PdfPreview').then(m => ({ default: m.PdfPreview })));
+const TextPreview    = lazy(() => import('./previews/TextPreview').then(m => ({ default: m.TextPreview })));
+const UnknownPreview = lazy(() => import('./previews/UnknownPreview').then(m => ({ default: m.UnknownPreview })));
 
 interface Props {
   file: FileInfo;
@@ -61,7 +63,9 @@ export function PreviewModal({ file, downloadUrl, onClose }: Props) {
           </button>
         </div>
         <div className="preview-modal__body">
-          {renderContent()}
+          <Suspense fallback={<span className="preview-state">Cargando...</span>}>
+            {renderContent()}
+          </Suspense>
         </div>
       </div>
     </div>

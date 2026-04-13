@@ -41,6 +41,7 @@
 
 - PDF e iframes sirven desde `/api/files/preview/` (inline, sin `Content-Disposition: attachment`)
 - Imágenes con zoom (rueda del mouse / trackpad)
+- Video usa Vidstack player (controles modernos, tema personalizado acorde al diseño)
 
 ### Vistas y UI
 - Modo lista (tabla) y modo grilla (cards) con toggle persistido en sesión
@@ -91,7 +92,7 @@ Todas las funcionalidades de Web, más:
 - Mismo comportamiento para archivos recibidos por P2P
 
 ### Backend embebido
-- Backend Node.js corre como sidecar (proceso autónomo) junto a la app
+- Backend Go corre como sidecar (proceso autónomo) junto a la app
 - Frontend servido directamente desde el backend en producción
 - Accesible desde el navegador de la red local (sin instalar nada extra)
 - Auto-arranque al abrir la app; auto-detención al cerrar
@@ -262,4 +263,5 @@ Todas las funcionalidades de Web, más:
 | `MAX_UPLOAD_COUNT` | `50` | Máximo de archivos por request |
 | `PREVIEW_MAX_FILE_SIZE_MB` | `1024` | Límite para previsualización (MB) |
 | `HTTPS_PORT` | `PORT+1` | Puerto del servidor HTTPS para navegadores externos |
+| `FRONTEND_PORT` | `5173` | Puerto de Vite en desarrollo (usado en config CORS) |
 | `CERTS_DIR` | `<cwd>/certs` | Directorio del certificado TLS auto-generado |

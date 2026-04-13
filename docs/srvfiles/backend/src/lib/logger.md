@@ -1,88 +1,79 @@
-# logger.ts
+# logger.go
 
-**Archivo:** `src/lib/logger.ts`
-**Rol:** Configura el sistema de logging basado en Winston y exporta el objeto `log` que usan todos los demás módulos del backend.
-
----
-
-## Configuración
-
-```ts
-const logsDir = join(process.cwd(), 'logs');
-mkdirSync(logsDir, { recursive: true });
-
-const isDev = process.env.NODE_ENV !== 'production';
-```
-
-El directorio `logs/` se crea al importar el módulo (al arrancar el servidor). En desarrollo (`NODE_ENV !== 'production'`), los logs también se imprimen en consola.
+**Archivo:** `internal/logger/logger.go`
+**Rol:** Sistema de logging estructurado con formato compatible con el winston del backend Node.js. Escribe a stdout en desarrollo y a `logs/errors.txt` para WARN y superiores.
 
 ---
 
-## Formato de línea
+## Formato de log
 
-```ts
-const lineFormat = format.printf(({ level, message, source, ...meta }) => {
-  const ts  = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  const lvl = level.toUpperCase().padEnd(5);
-  const src = source ? `[${source}] ` : '';
-  const keys = Object.keys(meta).filter((k) => k !== 'splat');
-  const ctx = keys.length ? ` — ${JSON.stringify(meta)}` : '';
-  return `${ts} ${lvl} ${src}${message}${ctx}`;
-});
+```
+2026-01-01 12:00:05 INFO  [source] msg — {"key":"value"}
 ```
 
-Produce líneas con el formato:
-```
-2026-03-29 14:30:00 INFO  [auth.service.ts] Auth successful, session created — {"ip":"192.168.1.5"}
-```
+El formato replica exactamente el output de winston para que las herramientas de observabilidad existentes (Tauri log viewer, parsers de CI) no necesiten cambios.
 
-- `ts`: timestamp local sin milisegundos.
-- `lvl`: nivel en mayúsculas, alineado a 5 caracteres.
-- `src`: nombre del archivo fuente entre corchetes (el primer argumento de cada función `log.*`).
-- `ctx`: contexto adicional serializado como JSON al final de la línea.
+- **Timestamp**: `2006-01-02 15:04:05` (formato de referencia de Go)
+- **Nivel**: `DEBUG`, `INFO `, `WARN `, `ERROR` (con padding para alinear columnas)
+- **Source**: nombre del archivo que llama al logger, entre corchetes
+- **Msg**: mensaje libre
+- **Contexto**: pares clave-valor serializados como JSON inline tras ` — `
 
 ---
 
-## Transports
+## Niveles
 
-```ts
-const logger = createLogger({
-  format: format.combine(format.errors({ stack: false }), lineFormat),
-  transports: [
-    new transports.File({
-      filename: join(logsDir, 'errors.txt'),
-      level: 'warn',
-    }),
-    ...(isDev ? [new transports.Console({ level: 'debug' })] : []),
-  ],
-});
+```go
+type level int
+const (
+    levelDebug level = iota
+    levelInfo
+    levelWarn
+    levelError
+)
 ```
 
-- **`errors.txt`**: archivo de log persistente. Solo guarda mensajes de nivel `warn` o superior (`warn`, `error`). Ubicación: `{cwd}/logs/errors.txt`.
-- **Console** (solo en dev): imprime todos los niveles hasta `debug`. No se activa en producción para no contaminar stdout del proceso en Tauri.
+Los métodos públicos son `Debug`, `Info`, `Warn` y `Error`. Todos tienen la misma firma:
+
+```go
+func (l *Logger) Info(source, msg string, args ...any)
+```
+
+`args` son pares `key, value` que se serializan como objeto JSON en el contexto del log.
 
 ---
 
-## API exportada
+## Destinos de escritura
 
-```ts
-export const log = {
-  error: (source: string, message: string, meta?: object) => logger.error(message, { source, ...meta }),
-  warn:  (source: string, message: string, meta?: object) => logger.warn(message,  { source, ...meta }),
-  info:  (source: string, message: string, meta?: object) => logger.info(message,  { source, ...meta }),
-  debug: (source: string, message: string, meta?: object) => logger.debug(message, { source, ...meta }),
-};
+```go
+func (l *Logger) write(lvl level, source, msg string, args ...any) {
+    // ...
+    if lvl >= levelWarn {
+        fmt.Fprint(l.fileOut, line) // → logs/errors.txt
+    }
+    if l.isDev {
+        fmt.Fprint(os.Stdout, line) // → stdout (solo en dev)
+    }
+}
 ```
 
-Cada función acepta:
-1. `source`: nombre del archivo que llama (convención: `'auth.service.ts'`). Aparece como `[source]` en el log.
-2. `message`: texto descriptivo del evento.
-3. `meta` (opcional): objeto con contexto adicional (IPs, nombres de archivo, contadores, etc.).
+- **Siempre**: WARN y ERROR se escriben en `logs/errors.txt`.
+- **Solo en dev** (`APP_ENV != "production"`): todos los niveles van a stdout.
 
-### Uso típico
+En producción (binario de Tauri) el servidor no escribe a stdout después del banner de arranque, evitando que el IPC de Tauri confunda logs con el PIN.
 
-```ts
-log.info('files.service.ts', 'File deleted', { filename });
-log.warn('auth.service.ts', 'IP blocked', { ip, attempts: entry.count });
-log.error('cert.ts', 'Error al generar certificado', { error: String(err) });
+---
+
+## Singleton global
+
+```go
+var Log = newLogger()
 ```
+
+`newLogger()` se llama al inicializar el paquete. Crea el directorio `logs/` si no existe, abre (o crea) `logs/errors.txt` en modo append, y detecta si `APP_ENV == "production"`. El resto del código usa `logger.Log.Info(...)` directamente.
+
+---
+
+## ¿Por qué no `log/slog`?
+
+Go 1.21 introdujo `log/slog`, pero su formato por defecto no coincide con el de winston. Implementar un handler `slog.Handler` personalizado requeriría más código que el logger propio. Dado que el formato es un requisito explícito del proyecto, el logger custom es la opción más simple y directa.

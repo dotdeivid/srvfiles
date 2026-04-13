@@ -84,7 +84,7 @@ export class AuthError extends Error {
 }
 
 export function createFilesApi(baseUrl: string) {
-  const instance = axios.create({ baseURL: `${baseUrl}/api/files` });
+  const instance = axios.create({ baseURL: baseUrl });
 
   // Attach session token to every request
   instance.interceptors.request.use((config) => {
@@ -114,7 +114,7 @@ export function createFilesApi(baseUrl: string) {
      * @returns A promise resolving to `{ files, count }`.
      */
     getFiles: (): Promise<{ files: FileInfo[]; count: number }> =>
-      instance.get('/').then((r) => r.data),
+      instance.get('/api/files').then((r) => r.data),
 
     /**
      * Uploads one or more files using `multipart/form-data`.
@@ -131,7 +131,7 @@ export function createFilesApi(baseUrl: string) {
       const formData = new FormData();
       files.forEach((f) => formData.append('files', f));
       return instance
-        .post('/upload', formData, {
+        .post('/api/files/upload', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
           onUploadProgress: (event) => {
             if (event.total && onProgress) {
@@ -149,7 +149,7 @@ export function createFilesApi(baseUrl: string) {
      * @returns A promise resolving to `{ message }` on success.
      */
     deleteFile: (filename: string): Promise<{ message: string }> =>
-      instance.delete(`/${encodeURIComponent(filename)}`).then((r) => r.data),
+      instance.delete(`/api/files/${encodeURIComponent(filename)}`).then((r) => r.data),
 
     /**
      * Fetches disk space statistics for the server's upload volume.
@@ -157,7 +157,7 @@ export function createFilesApi(baseUrl: string) {
      * @returns A promise resolving to `{ total, used, free }` in bytes.
      */
     getStats: (): Promise<DiskStats> =>
-      instance.get('/stats').then((r) => r.data),
+      instance.get('/api/files/stats').then((r) => r.data),
 
     /**
      * Fetches the server's runtime configuration (app name, LAN IP, ports, etc.).

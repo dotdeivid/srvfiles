@@ -1,48 +1,46 @@
-# auth.middleware.ts
+# auth/middleware.go
 
-**Archivo:** `src/features/auth/auth.middleware.ts`
-**Rol:** Middleware Express que protege rutas privadas. Verifica que la petición lleve un token de sesión válido antes de continuar al router correspondiente.
+**Archivo:** `internal/auth/middleware.go`
+**Rol:** Middleware chi que protege las rutas privadas verificando que la petición incluya un token de sesión válido.
 
 ---
 
-## `requireAuth`
+## `RequireAuth`
 
-```ts
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
-  const token = (req.headers['x-srvfiles-token'] as string | undefined)
-    ?? (req.query.token as string | undefined);
-  if (validateToken(token)) {
-    next();
-  } else {
-    const ip = (req.socket.remoteAddress ?? '').replace('::ffff:', '');
-    log.warn('auth.middleware.ts', 'Unauthorized request — invalid or missing token', { ip, path: req.path });
-    res.status(401).json({ error: 'Unauthorized' });
-  }
+```go
+func RequireAuth(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        token := r.Header.Get("X-SrvFiles-Token")
+        if token == "" {
+            token = r.URL.Query().Get("token")
+        }
+        if !ValidateToken(token) {
+            http.Error(w, "Unauthorized", http.StatusUnauthorized)
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
 }
 ```
 
-### Fuentes del token
+Busca el token en dos lugares (en orden):
 
-El token se acepta por dos vías:
+1. **Header `X-SrvFiles-Token`**: usado por las llamadas fetch del frontend React y la app Flutter.
+2. **Query param `?token=`**: usado por el endpoint de descarga (`/api/files/download/:filename`) cuando el navegador abre la URL directamente (no puede añadir headers custom a una navegación `<a href>`).
 
-1. **Header `X-SrvFiles-Token`**: modo preferido para peticiones HTTP normales (fetch, axios). El frontend web y la app Flutter lo ponen en todas las peticiones autenticadas.
+Si el token no está presente o no es válido, responde `401 Unauthorized` y **no** llama al handler siguiente.
 
-2. **Query param `?token=...`**: necesario para los endpoints de descarga y preview, ya que los elementos `<img>`, `<video>`, `<audio>` e `<iframe>` del navegador no permiten enviar headers personalizados. El frontend los usa en las URLs de preview y descarga directa.
+---
 
-### Operador `??`
+## Integración con chi
 
-Usa el operador nullish coalescing: si `req.headers['x-srvfiles-token']` es `undefined`, intenta con `req.query.token`. A diferencia de `||`, `??` no considera `''` (string vacío) como falsy, lo que es más correcto para tokens.
+El middleware se aplica a un grupo de rutas en `main.go`:
 
-### Comportamiento
-
-- Si el token es válido: llama `next()` y el router protegido continúa normalmente.
-- Si es inválido o ausente: responde `401` y registra la IP y la ruta en los logs.
-
-### ¿Dónde se monta?
-
-En `app.ts`:
-```ts
-app.use('/api/files', requireAuth, filesRouter);
-app.use('/api/config', requireAuth, configRouter);
-app.use('/api/discovery', requireAuth, discoveryRouter);
+```go
+r.Group(func(r chi.Router) {
+    r.Use(auth.RequireAuth)
+    // ... rutas protegidas
+})
 ```
+
+chi evalúa los middlewares del grupo antes de hacer match de la ruta, por lo que `RequireAuth` se ejecuta incluso si la ruta no existe dentro del grupo (devuelve 401 antes del 404).

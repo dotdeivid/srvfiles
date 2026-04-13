@@ -6,10 +6,13 @@ dist/
 Thumbs.db
 *.log
 
+# Backend Go — directorios de runtime (generados, no commitear)
 backend/uploads/*
 !backend/uploads/.gitkeep
+backend/certs/
+backend/logs/
 
-# Rust / Tauri — build cache and compiled binaries (generated, never commit)
+# Rust / Tauri — build cache y binarios compilados (generados, no commitear)
 src-tauri/target/
 src-tauri/binaries/
 

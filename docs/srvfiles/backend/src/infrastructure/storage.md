@@ -1,32 +1,31 @@
-# storage.ts
+# storage.go
 
-**Archivo:** `src/infrastructure/storage.ts`
-**Rol:** Define y garantiza la existencia del directorio de uploads. Es la fuente de verdad para la ruta de almacenamiento de archivos subidos.
+**Archivo:** `internal/storage/storage.go`
+**Rol:** Garantiza que el directorio de uploads exista en disco al arrancar el servidor.
 
 ---
 
-## `UPLOADS_DIR`
+## `Init`
 
-```ts
-export const UPLOADS_DIR = process.env.UPLOADS_DIR || path.resolve(process.cwd(), 'uploads');
-
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+```go
+func Init() {
+    if err := os.MkdirAll(config.UploadsDir, 0755); err != nil {
+        logger.Log.Error("storage.go", "Failed to create uploads directory",
+            "path", config.UploadsDir, "error", err)
+        os.Exit(1)
+    }
+    logger.Log.Info("storage.go", "Uploads directory ready", "path", config.UploadsDir)
 }
 ```
 
-Constante que contiene la ruta absoluta al directorio de uploads.
+`os.MkdirAll` crea el directorio y todos los intermedios necesarios. Es idempotente: si el directorio ya existe, no hace nada. Los permisos `0755` permiten al proceso leer y escribir, y a otros usuarios leer (comportamiento estándar en Unix).
 
-### Resolución de la ruta
+Se llama una sola vez al inicio de `main()`, antes de registrar cualquier ruta.
 
-- **Con variable de entorno `UPLOADS_DIR`**: usa la ruta provista. En Tauri sidecar, esta variable apunta a un directorio dentro de los datos de la aplicación (ej: `AppData/srvfiles/uploads` en Windows).
-- **Sin variable de entorno**: usa `{cwd}/uploads/`, relativo al directorio de trabajo del proceso.
+---
 
-### Creación automática
+## ¿Por qué un paquete separado?
 
-El bloque `if (!fs.existsSync(...))` se ejecuta en el momento en que el módulo se importa (al arrancar el servidor). Si el directorio no existe, lo crea con `{ recursive: true }` (crea directorios intermedios si hacen falta; no falla si ya existe).
-
-### ¿Dónde se usa?
-
-- `upload.middleware.ts`: destino de los archivos de Multer.
-- `files.service.ts`: directorio base para listar, resolver y eliminar archivos.
+- Centraliza la decisión de qué directorio usar (`config.UploadsDir`).
+- `main.go` llama `storage.Init()` explícitamente, lo que deja clara la secuencia de inicialización.
+- Los tests de `files` pueden apuntar a un directorio temporal sin modificar `main.go`.

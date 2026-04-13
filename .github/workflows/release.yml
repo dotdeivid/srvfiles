@@ -5,7 +5,6 @@ on:
     tags: ['v*']  # Se activa solo cuando pusheás un tag como v1.0.0
 
 # Permisos necesarios para crear la Release en el repo
-# (requerido especialmente en repos privados)
 permissions:
   contents: write
 
@@ -15,28 +14,23 @@ jobs:
       fail-fast: false  # Si falla una plataforma, las demás siguen
       matrix:
         include:
-          # Linux es el más barato (1x)
+          # Linux (runner más barato — 1x)
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-          # Windows cuesta 2x
+          # Windows (2x)
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-          # macOS cuesta 10x por minuto de runner.
-          # Genera un universal binary (.dmg) que corre en Intel y Apple Silicon.
-          # Comentalo si preferís compilar el .dmg manualmente desde tu Mac.
+          # macOS (10x — comentar si preferís compilar el .dmg manualmente)
           # - platform: macos-latest
-          #  target: universal-apple-darwin
+          #   target: aarch64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
-
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Solo Linux necesita paquetes extra del sistema
+      # Solo Linux necesita librerías extra del sistema para compilar Tauri
       - name: Install system dependencies (Ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -52,15 +46,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'  # Cache de node_modules para builds más rápidos
+          cache: npm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          # universal-apple-darwin requiere ambos targets instalados
-          targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
+          targets: ${{ matrix.target }}
 
-      # Cache de la compilación de Rust (ahorra ~5-10 min por build)
       - name: Cache Rust
         uses: actions/cache@v4
         with:
@@ -69,15 +67,17 @@ jobs:
             ~/.cargo/git
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Install dependencies
-        run: npm ci && npm run install:all
+        run: npm run install:all
 
-      # El action oficial de Tauri se encarga de:
-      # 1. Build del frontend (vite build)
-      # 2. Build del sidecar
-      # 3. Compilar Tauri
-      # 4. Crear la Release en GitHub con los instaladores
+      # tauri-action llama a `beforeBuildCommand` (npm run build:sidecar) que:
+      #   1. Compila el frontend con Vite
+      #   2. Embebe el dist en el binario Go
+      #   3. Compila el sidecar Go con `go build -tags embed -ldflags="-s -w"`
+      # Luego tauri-action compila Tauri y publica los instaladores en la Release.
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:

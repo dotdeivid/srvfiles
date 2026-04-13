@@ -1,61 +1,63 @@
-# network.ts
+# network.go
 
-**Archivo:** `src/infrastructure/network.ts`
-**Rol:** Funciones de infraestructura para obtener información de la red local. Detecta la IP LAN del host y genera la lista de IPs de la subnet /24 para el escaneo de descubrimiento.
+**Archivo:** `internal/network/network.go`
+**Rol:** Utilidades de red: detecta la IP LAN del servidor y genera la lista de IPs del subnet /24 para el escáner de descubrimiento.
 
 ---
 
-## `getLanIp`
+## `GetLanIp`
 
-```ts
-export function getLanIp(): string {
-  const nets = os.networkInterfaces();
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name]!) {
-      if (net.family === 'IPv4' && !net.internal) {
-        return net.address;
-      }
+```go
+func GetLanIp() string {
+    ifaces, _ := net.Interfaces()
+    for _, iface := range ifaces {
+        if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+            continue
+        }
+        addrs, _ := iface.Addrs()
+        for _, addr := range addrs {
+            var ip net.IP
+            switch v := addr.(type) {
+            case *net.IPNet:  ip = v.IP
+            case *net.IPAddr: ip = v.IP
+            }
+            if ip == nil || ip.IsLoopback() || ip.To4() == nil {
+                continue
+            }
+            return ip.String()
+        }
     }
-  }
-  return 'localhost';
+    return "127.0.0.1"
 }
 ```
 
-Devuelve la primera dirección IPv4 no interna (la IP LAN del host, ej: `192.168.1.5`). Si no hay interfaces externas (sin WiFi/Ethernet), devuelve `'localhost'` como fallback.
+Itera todas las interfaces de red del sistema. Descarta:
+- Interfaces de loopback (`127.x.x.x`, `::1`)
+- Interfaces que no están activas (`FlagUp`)
+- Direcciones IPv6
 
-### Paso a paso
-
-1. `os.networkInterfaces()` devuelve todas las interfaces de red (WiFi, Ethernet, loopback, etc.) con sus direcciones.
-2. El bucle doble itera sobre interfaces y sus direcciones.
-3. El filtro busca: `family === 'IPv4'` (descarta IPv6) y `!net.internal` (descarta `127.0.0.1`).
-4. Devuelve la primera que coincida.
-
-### ¿Por qué es una función y no una constante?
-
-La IP puede cambiar durante la ejecución (cambio de red WiFi, reconexión). Al ser función, siempre lee el estado actual del sistema.
-
-### ¿Dónde se usa?
-
-- `index.ts`: imprime la URL de red al arrancar.
-- `config.controller.ts`: envía la IP al frontend en `/api/config`.
-- `transfer.handler.ts`: asigna la IP LAN a conexiones loopback.
-- `discovery.service.ts`: excluye el propio servidor del resultado del escaneo.
+Devuelve la primera IPv4 no-loopback que encuentre. Si no hay ninguna (máquina sin red), devuelve `127.0.0.1` como fallback.
 
 ---
 
-## `getSubnetIPs`
+## `GetSubnetIPs`
 
-```ts
-export function getSubnetIPs(): string[] {
-  const lanIp = getLanIp();
-  if (lanIp === 'localhost') return [];
-
-  const parts = lanIp.split('.');
-  const subnet = `${parts[0]}.${parts[1]}.${parts[2]}`;
-  return Array.from({ length: 254 }, (_, i) => `${subnet}.${i + 1}`);
+```go
+func GetSubnetIPs() []string {
+    lanIp := GetLanIp()
+    parts := strings.Split(lanIp, ".")
+    if len(parts) != 4 {
+        return nil
+    }
+    prefix := strings.Join(parts[:3], ".")
+    ips := make([]string, 0, 254)
+    for i := 1; i <= 254; i++ {
+        ips = append(ips, fmt.Sprintf("%s.%d", prefix, i))
+    }
+    return ips
 }
 ```
 
-Genera los 254 hosts posibles de la subnet /24 del host (ej: `192.168.1.1` a `192.168.1.254`). Si no hay interfaz externa, devuelve `[]` para evitar un escaneo vacío.
+Construye la lista de las 254 IPs del subnet /24 (`.1` a `.254`) tomando los tres primeros octetos de `GetLanIp()`. Usado por `discovery.ScanNetwork()` para saber qué IPs sondear.
 
-Solo lo usa `discovery.service.ts` para construir la lista de IPs a sondear.
+Por ejemplo, si `GetLanIp()` devuelve `192.168.1.42`, genera `["192.168.1.1", ..., "192.168.1.254"]`.
