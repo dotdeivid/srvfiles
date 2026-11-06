@@ -1,5 +1,7 @@
 # SrvFiles
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 Compartí archivos entre dispositivos en la misma red local. Sin internet, sin cuenta, sin configuración.
 
 ## ¿Cómo funciona?
@@ -71,11 +73,18 @@ npm run tauri:dev
 ### Build de producción
 
 ```bash
-# Genera instaladores nativos (.dmg / .exe / .deb)
 npm run tauri:build
 ```
 
-Los artefactos quedan en `src-tauri/target/release/bundle/`.
+Genera el instalador **de la plataforma actual** en `src-tauri/target/release/bundle/`:
+
+| SO donde compilás | Artefacto generado |
+|---|---|
+| macOS | `.dmg` + `.app` |
+| Windows | `.msi` + `.exe` (NSIS) |
+| Linux | `.deb` + `.AppImage` |
+
+> Tauri no hace cross-compilation. Para obtener los tres formatos usá la CI (ver abajo).
 
 ### Release automática (CI/CD)
 
@@ -83,7 +92,7 @@ Los artefactos quedan en `src-tauri/target/release/bundle/`.
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
-Dispara GitHub Actions y publica los instaladores en la sección Releases del repo.
+Dispara GitHub Actions en macOS, Windows y Linux en paralelo, y publica los tres instaladores en la sección Releases del repo.
 
 Para eliminar un tag (local y origin):
 
@@ -134,3 +143,7 @@ El archivo de referencia completo está en `backend/internal/config/config.go`.
 - En Tauri, el backend corre como sidecar (binario autónomo). Cambios en el backend requieren re-ejecutar `npm run build:sidecar`.
 - Los archivos recibidos vía P2P se guardan en `~/Downloads/SrvFiles/`.
 - La app mobile tiene su propio repo. Ver [srvfiles-mobile](https://github.com/dotdeivid/srvfiles-mobile).
+
+## Licencia
+
+Distribuido bajo la licencia [Apache 2.0](LICENSE). © 2026 dotdeivid.
