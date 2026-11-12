@@ -20,9 +20,9 @@ jobs:
           # Windows (2x)
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-          # macOS (10x — comentar si preferís compilar el .dmg manualmente)
-          # - platform: macos-latest
-          #   target: aarch64-apple-darwin
+          # macOS (Apple Silicon)
+          - platform: macos-latest
+            target: aarch64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
 
@@ -73,6 +73,15 @@ jobs:
       - name: Install dependencies
         run: npm run install:all
 
+      # No publicar nada que no pase los tests.
+      - name: Backend tests
+        working-directory: backend
+        run: go test ./...
+
+      - name: Frontend typecheck and tests
+        working-directory: frontend
+        run: npm run typecheck && npm test
+
       # tauri-action llama a `beforeBuildCommand` (npm run build:sidecar) que:
       #   1. Compila el frontend con Vite
       #   2. Embebe el dist en el binario Go
@@ -82,9 +91,23 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Firma y notarización en macOS: se activan solas si los secretos existen.
+          # Sin firmar, Gatekeeper (macOS) y SmartScreen (Windows) advierten al instalar.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Actualizador automático: firma de los paquetes de actualización.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'SrvFiles ${{ github.ref_name }}'
           releaseBody: 'Descargá el instalador para tu plataforma.'
           releaseDraft: false
           prerelease: false
+          # Con la clave de firma cargada se generan los paquetes de
+          # actualización y latest.json; sin ella, el release sale igual.
+          args: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' && '--config src-tauri/tauri.updater.conf.json' || '' }}

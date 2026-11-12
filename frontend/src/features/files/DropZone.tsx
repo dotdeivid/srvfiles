@@ -1,118 +1,120 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { isTauriApp } from '../../lib/tauri';
+import { toast } from 'sonner';
+import { isTauriApp, pathInfo } from '../../lib/tauri';
 import { formatBytes } from '../../shared/utils/format';
+import { log } from '../../lib/logger';
+import type { UploadItem, UploadOutcome } from './useFiles';
 import { Upload } from 'lucide-react';
 
 interface DropZoneProps {
-  onUpload: (files: File[]) => Promise<boolean>;
+  onUpload: (items: UploadItem[]) => Promise<UploadOutcome>;
+  onCancel: () => void;
   uploading: boolean;
+  /** 0–100 */
   uploadProgress: number;
+  /** Límite por archivo en MB (0 o ausente = sin límite). */
+  maxFileSizeMb?: number;
 }
+
+const keyOf = (i: UploadItem) => (i.kind === 'path' ? `p:${i.path}` : `f:${i.name}:${i.size}:${i.file.lastModified}`);
 
 /**
  * Drag & drop zone for file uploads.
  *
- * - In regular browsers: uses react-dropzone (HTML5 File API).
- * - In Tauri: react-dropzone handles click-to-browse; OS drag-drop
- *   is handled via Tauri's webview event API because Tauri intercepts
- *   native drop events before they reach the DOM.
+ * - En el navegador: react-dropzone (File API); el navegador lee los
+ *   archivos en streaming al subir.
+ * - En Tauri: el drag del sistema llega como rutas (el webview intercepta el
+ *   drop) y se suben con un comando nativo, sin cargar el archivo en memoria.
  */
-export function DropZone({ onUpload, uploading, uploadProgress }: DropZoneProps) {
-  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+export function DropZone({ onUpload, onCancel, uploading, uploadProgress, maxFileSizeMb }: DropZoneProps) {
+  const [staged, setStaged] = useState<UploadItem[]>([]);
   const [tauriDragActive, setTauriDragActive] = useState(false);
+  const uploadingRef = useRef(uploading);
+  uploadingRef.current = uploading;
+
+  const maxBytes = maxFileSizeMb && maxFileSizeMb > 0 ? maxFileSizeMb * 1024 * 1024 : null;
+
+  const addItems = useCallback((items: UploadItem[]) => {
+    setStaged((prev) => {
+      const existing = new Set(prev.map(keyOf));
+      const fresh = items.filter((i) => !existing.has(keyOf(i)));
+      return fresh.length > 0 ? [...prev, ...fresh] : prev;
+    });
+  }, []);
 
   // ─── Tauri native drag-drop ───────────────────────────────────────
   useEffect(() => {
     if (!isTauriApp()) return;
-
     let unlisten: (() => void) | undefined;
+    let disposed = false;
 
-    async function setup() {
+    (async () => {
       try {
         const { getCurrentWebview } = await import('@tauri-apps/api/webview');
-        const webview = getCurrentWebview();
-
-        unlisten = await webview.onDragDropEvent(async (event) => {
-          const type = event.payload.type;
-
-          if (type === 'enter' || type === 'over') {
-            setTauriDragActive(true);
-            return;
-          }
-
-          if (type === 'leave') {
-            setTauriDragActive(false);
-            return;
-          }
-
+        const stop = await getCurrentWebview().onDragDropEvent(async (event) => {
+          const { type } = event.payload;
+          if (type === 'enter' || type === 'over') { setTauriDragActive(true); return; }
+          if (type === 'leave') { setTauriDragActive(false); return; }
           if (type === 'drop') {
             setTauriDragActive(false);
-            if (uploading) return;
-
-            const paths: string[] = event.payload.paths ?? [];
-            if (paths.length === 0) return;
-
-            const { readFile } = await import('@tauri-apps/plugin-fs');
-            const files: File[] = [];
-
-            for (const filePath of paths) {
-              try {
-                const data = await readFile(filePath);
-                // Extract filename from path (works for both / and \)
-                const name = filePath.replace(/\\/g, '/').split('/').pop() || 'file';
-                files.push(new File([data], name));
-              } catch (e) {
-                console.error('[Tauri drop] Could not read file:', filePath, e);
-              }
-            }
-
-            if (files.length > 0) {
-              setStagedFiles((prev) => {
-                // Deduplicate by name+size to avoid Tauri double-fire
-                const existing = new Set(prev.map((f) => `${f.name}:${f.size}`));
-                const unique = files.filter((f) => !existing.has(`${f.name}:${f.size}`));
-                return unique.length > 0 ? [...prev, ...unique] : prev;
-              });
-            }
+            if (uploadingRef.current) return;
+            const infos = await pathInfo(event.payload.paths ?? []);
+            addItems(infos.map((f) => ({ kind: 'path' as const, path: f.path, name: f.name, size: f.size })));
           }
         });
+        // Si el efecto ya se limpió mientras se registraba, soltar enseguida
+        // (antes quedaban listeners duplicados y cada drop llegaba dos veces).
+        if (disposed) stop();
+        else unlisten = stop;
       } catch (e) {
-        console.warn('[Tauri drop] Could not set up drag-drop listener:', e);
+        void log.warn('[DropZone] could not set up Tauri drag-drop listener', { error: String(e) });
       }
-    }
+    })();
 
-    setup();
-    return () => { unlisten?.(); };
-  }, [uploading]);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [addItems]);
 
   // ─── Standard react-dropzone (click + browser drag) ───────────────
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    setStagedFiles((prev) => [...prev, ...acceptedFiles]);
-  }, []);
+  const onDrop = useCallback((accepted: File[]) => {
+    addItems(accepted.map((file) => ({ kind: 'file' as const, file, name: file.name, size: file.size })));
+  }, [addItems]);
 
   const { getRootProps, getInputProps, isDragActive: htmlDragActive } = useDropzone({
     onDrop,
     disabled: uploading,
-    // In Tauri the OS drag-drop is handled by the webview event above.
-    // Disable react-dropzone's own drop handler to avoid processing files twice.
+    // En Tauri el drag del sistema lo maneja el listener de arriba.
     noDrag: isTauriApp(),
   });
 
   const isDragActive = htmlDragActive || tauriDragActive;
+  const oversized = maxBytes ? staged.filter((i) => i.size > maxBytes) : [];
+  const totalSize = staged.reduce((s, i) => s + i.size, 0);
 
-  // ─── Upload actions ───────────────────────────────────────────────
   const handleUpload = async () => {
-    if (stagedFiles.length === 0) return;
-    const success = await onUpload(stagedFiles);
-    if (success) setStagedFiles([]);
+    if (staged.length === 0 || oversized.length > 0) return;
+    const outcome = await onUpload(staged);
+    if (outcome.cancelled) {
+      toast.info('Subida cancelada');
+      return;
+    }
+    if (outcome.failed.length > 0) {
+      const failedNames = new Set(outcome.failed.map((f) => f.name));
+      toast.error(
+        `No se pudieron subir ${outcome.failed.length} archivo(s): ` +
+        outcome.failed.map((f) => `${f.name || 'archivo'} (${f.reason})`).join(', '),
+      );
+      setStaged((prev) => prev.filter((i) => failedNames.has(i.name)));
+      return;
+    }
+    if (outcome.ok) {
+      toast.success(staged.length > 1 ? `${staged.length} archivos subidos` : 'Archivo subido');
+      setStaged([]);
+    }
   };
-
-  const removeStaged = (index: number) => {
-    setStagedFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const clearAll = () => setStagedFiles([]);
 
   return (
     <div className="dropzone-container">
@@ -133,7 +135,9 @@ export function DropZone({ onUpload, uploading, uploadProgress }: DropZoneProps)
               Arrastrá archivos aquí o{' '}
               <span className="dropzone__link">buscá en tu dispositivo</span>
             </p>
-            <p className="dropzone__hint">Máximo 10GB por archivo</p>
+            {maxFileSizeMb ? (
+              <p className="dropzone__hint">Máximo {formatBytes(maxFileSizeMb * 1024 * 1024)} por archivo</p>
+            ) : null}
           </>
         )}
       </div>
@@ -142,45 +146,58 @@ export function DropZone({ onUpload, uploading, uploadProgress }: DropZoneProps)
       {uploading && (
         <div className="upload-progress" id="upload-progress">
           <div className="upload-progress__bar">
-            <div
-              className="upload-progress__fill"
-              style={{ width: `${uploadProgress}%` }}
-            />
+            <div className="upload-progress__fill" style={{ width: `${uploadProgress}%` }} />
           </div>
           <span className="upload-progress__text">{uploadProgress}%</span>
+          <button className="btn btn--ghost btn--sm" onClick={onCancel} id="cancel-upload-btn">
+            Cancelar
+          </button>
         </div>
       )}
 
       {/* Staged files preview */}
-      {stagedFiles.length > 0 && !uploading && (
+      {staged.length > 0 && !uploading && (
         <div className="staged-files">
           <div className="staged-files__header">
             <span className="staged-files__count">
-              {stagedFiles.length} archivo{stagedFiles.length > 1 ? 's' : ''} seleccionado
-              {stagedFiles.length > 1 ? 's' : ''}
+              {staged.length} archivo{staged.length > 1 ? 's' : ''} seleccionado{staged.length > 1 ? 's' : ''}
+              {' '}({formatBytes(totalSize)})
             </span>
-            <button onClick={clearAll} className="staged-files__clear" id="clear-staged-btn">
+            <button onClick={() => setStaged([])} className="staged-files__clear" id="clear-staged-btn">
               Limpiar
             </button>
           </div>
           <ul className="staged-files__list">
-            {stagedFiles.map((file, idx) => (
-              <li key={`${file.name}-${idx}`} className="staged-files__item">
-                <span className="staged-files__name">{file.name}</span>
-                <span className="staged-files__size">{formatBytes(file.size)}</span>
-                <button
-                  onClick={() => removeStaged(idx)}
-                  className="staged-files__remove"
-                  aria-label={`Remove ${file.name}`}
-                >
-                  ✕
-                </button>
-              </li>
-            ))}
+            {staged.map((item, idx) => {
+              const tooBig = maxBytes !== null && item.size > maxBytes;
+              return (
+                <li key={keyOf(item)} className="staged-files__item">
+                  <span className="staged-files__name" style={tooBig ? { color: 'var(--color-danger, #f87171)' } : undefined}>
+                    {item.name}
+                  </span>
+                  <span className="staged-files__size">
+                    {formatBytes(item.size)}{tooBig ? ' — excede el límite' : ''}
+                  </span>
+                  <button
+                    onClick={() => setStaged((prev) => prev.filter((_, i) => i !== idx))}
+                    className="staged-files__remove"
+                    aria-label={`Quitar ${item.name}`}
+                  >
+                    ✕
+                  </button>
+                </li>
+              );
+            })}
           </ul>
-          <button onClick={handleUpload} className="btn btn--primary" id="upload-btn">
+          <button
+            onClick={handleUpload}
+            className="btn btn--primary"
+            id="upload-btn"
+            disabled={oversized.length > 0}
+            title={oversized.length > 0 ? 'Quitá los archivos que exceden el límite' : undefined}
+          >
             <Upload size={16} />
-            Subir {stagedFiles.length > 1 ? `${stagedFiles.length} archivos` : 'archivo'}
+            Subir {staged.length > 1 ? `${staged.length} archivos` : 'archivo'}
           </button>
         </div>
       )}

@@ -1,67 +1,74 @@
+import { useEffect, useState } from 'react';
 import { formatBytes } from '../../shared/utils/format';
-import type { IncomingTransferRequest } from './transfer.api';
+import { formatSas } from '../../lib/e2e';
+import type { PendingRequest } from './useTransfer';
+import { Monitor, File as FileIcon, ShieldCheck } from 'lucide-react';
 
 interface IncomingTransferModalProps {
-  request: IncomingTransferRequest | null;
+  request: PendingRequest | null;
+  /** Solicitudes en cola, incluida la visible. */
+  pending?: number;
   onAccept: () => void;
   onReject: () => void;
 }
 
-export function IncomingTransferModal({ request, onAccept, onReject }: IncomingTransferModalProps) {
+/**
+ * Solicitud de transferencia entrante.
+ *
+ * El receptor tiene que confirmar que el código de verificación coincide con
+ * el que ve el emisor: así se detecta un intermediario que haya cambiado las
+ * claves. Hacer clic fuera del diálogo no rechaza.
+ */
+export function IncomingTransferModal({ request, pending = 1, onAccept, onReject }: IncomingTransferModalProps) {
+  const [confirmed, setConfirmed] = useState(false);
+  useEffect(() => setConfirmed(false), [request?.transferId]);
+
   if (!request) return null;
 
   return (
-    <div className="modal-overlay" onClick={onReject}>
-      <div className="modal transfer-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal transfer-modal" role="dialog" aria-modal="true" aria-labelledby="transfer-modal-title">
         <div className="modal__header">
-          <h3 className="modal__title">Archivo entrante</h3>
+          <h3 className="modal__title" id="transfer-modal-title">Archivo entrante</h3>
         </div>
         <div className="modal__body">
           <div className="transfer-modal__sender">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
-            </svg>
+            <Monitor size={18} />
             <span>{request.fromName}</span>
           </div>
           <div className="transfer-modal__file">
-            <svg
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-              <polyline points="13 2 13 9 20 9" />
-            </svg>
+            <FileIcon size={32} strokeWidth={1.5} />
             <div className="transfer-modal__file-info">
               <span className="transfer-modal__filename">{request.fileName}</span>
               <span className="transfer-modal__filesize">{formatBytes(request.fileSize)}</span>
             </div>
           </div>
+
+          <div className="transfer-modal__sas" aria-live="polite">
+            <ShieldCheck size={18} />
+            <span>Código de verificación</span>
+            <strong className="transfer-modal__sas-code">{formatSas(request.sas)}</strong>
+          </div>
+          <label className="transfer-modal__sas-confirm">
+            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+            {' '}El código coincide con el que se ve en {request.fromName}
+          </label>
+
           <p className="transfer-modal__message">
             ¿Querés recibir este archivo?
+            {pending > 1 && ` (hay ${pending - 1} más en espera)`}
           </p>
         </div>
         <div className="modal__footer">
           <button className="btn btn--secondary" onClick={onReject}>
             Rechazar
           </button>
-          <button className="btn btn--primary" onClick={onAccept}>
+          <button
+            className="btn btn--primary"
+            onClick={onAccept}
+            disabled={!confirmed}
+            title={confirmed ? undefined : 'Confirmá que el código coincide'}
+          >
             Aceptar
           </button>
         </div>

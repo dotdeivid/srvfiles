@@ -59,7 +59,14 @@
 - Cancelación en cualquier momento
 - Mensaje `send-complete` con notificación de finalización
 
-### Cifrado E2E
+### Cifrado de extremo a extremo (obligatorio)
+- Cada transferencia negocia su propia clave entre emisor y receptor; el servidor no puede descifrar el archivo
+- Código de verificación de 6 dígitos: el receptor confirma que coincide con el del emisor antes de aceptar
+- Cada chunk se autentica con su número de orden y un marcador final cifrado verifica cantidad, tamaño y nombre
+- Requiere HTTPS en el navegador (la web abierta por HTTP no puede enviar ni recibir)
+
+### Cifrado del canal WebSocket
+- Además, el tramo dispositivo ↔ servidor va cifrado (protege la señalización)
 - Intercambio de claves ECDH P-256 al inicio de sesión WebSocket
 - Clave derivada con HKDF-SHA-256 — cada sesión tiene clave única
 - Cifrado de chunks con AES-256-GCM + IV aleatorio por mensaje
@@ -160,7 +167,11 @@ Todas las funcionalidades de Web, más:
 - Archivos recibidos guardados en `Download/SrvFiles/received/`
 - Notificación local al completar una transferencia
 
-### Cifrado E2E
+### Cifrado de extremo a extremo (obligatorio)
+- El relay del teléfono solo reenvía chunks cifrados entre emisor y receptor
+- Código de verificación de 6 dígitos que el receptor confirma antes de aceptar
+
+### Cifrado del canal WebSocket
 - Intercambio de claves ECDH P-256 al conectar al relay
 - Derivación de clave compartida con HKDF
 - Cifrado de transferencias con AES-256-GCM
@@ -220,7 +231,7 @@ Todas las funcionalidades de Web, más:
 - PIN con hash SHA-256 (nunca se almacena en plano en producción)
 - Rate limiting: 5 intentos fallidos → bloqueo 60 s por IP
 - Tokens de sesión UUID sin estado en el servidor (limpios al reiniciar)
-- Cifrado E2E en transferencias P2P (ECDH P-256 + HKDF + AES-256-GCM)
+- Cifrado de extremo a extremo obligatorio en transferencias P2P (ECDH P-256 + HKDF + AES-256-GCM), con código de verificación
 
 ### API REST del backend
 | Método | Endpoint | Descripción |

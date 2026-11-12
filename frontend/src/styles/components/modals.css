@@ -288,3 +288,31 @@
   justify-content: flex-end;
 }
 
+
+/* ─── Código de verificación E2E ─────────────────────────────── */
+.transfer-modal__sas {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.transfer-modal__sas-code {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
+}
+
+.transfer-modal__sas-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}

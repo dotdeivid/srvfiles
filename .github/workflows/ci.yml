@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Vet
+        run: go vet ./...
+      - name: Test (race detector)
+        run: go test -race ./...
+
+  frontend:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm test
+
+  tauri:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-ci-${{ hashFiles('src-tauri/Cargo.lock') }}
+      # tauri-build valida la configuración y exige que exista el binario del sidecar.
+      - name: Placeholder sidecar
+        run: |
+          mkdir -p src-tauri/binaries frontend/dist
+          touch src-tauri/binaries/srvfiles-sidecar-x86_64-unknown-linux-gnu
+      - name: Check
+        working-directory: src-tauri
+        run: cargo check --locked
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test --locked --lib
+
+  # El cliente web contra el backend Go real: protocolo y cifrado E2E.
+  interop:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Start backend
+        working-directory: backend
+        run: |
+          go build -o /tmp/srvfiles ./cmd/server
+          mkdir -p /tmp/srv/{uploads,certs,logs}
+          PORT=3901 HTTPS_PORT=3902 APP_ENV=production UPLOADS_DIR=/tmp/srv/uploads \
+            CERTS_DIR=/tmp/srv/certs LOGS_DIR=/tmp/srv/logs /tmp/srvfiles &
+          for i in $(seq 1 30); do curl -sf http://localhost:3901/api/health && break; sleep 1; done
+      - run: npm ci
+        working-directory: frontend
+      - name: Interop test
+        working-directory: frontend
+        env:
+          SRVFILES_INTEROP_URL: http://localhost:3901
+        run: npx vitest run src/features/transfer/interop.test.ts

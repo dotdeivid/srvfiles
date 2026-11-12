@@ -4,7 +4,9 @@ import { toast } from 'sonner';
 import type { FileInfo } from './files.api';
 import { formatBytes } from '../../shared/utils/format';
 import { getFileIcon } from '../../shared/utils/fileIcons';
-import { isTauriApp, saveReceivedFile } from '../../lib/tauri';
+import { isTauriApp, nativeDownload, onNativeProgress, cancelNativeTransfer } from '../../lib/tauri';
+import { errorMessage } from '../../lib/http';
+import { log } from '../../lib/logger';
 import { canPreview } from '../../shared/utils/fileTypeHelper';
 import { PreviewModal } from '../preview/PreviewModal';
 import { Download, Trash2, Eye } from 'lucide-react';
@@ -13,50 +15,110 @@ interface FileItemProps {
   file: FileInfo;
   onRequestDelete: (filename: string) => void;
   viewMode: 'list' | 'grid';
-  getDownloadUrl: (filename: string) => string;
+  getLinkedUrl: (filename: string, kind: 'download' | 'preview') => Promise<string>;
+  getPlainDownloadUrl: (filename: string) => string;
+  token: string | null;
   canDelete: boolean;
   /** Max file size in MB allowed for preview. Comes from server config. */
   previewMaxMb?: number;
 }
 
-export function FileItem({ file, onRequestDelete, viewMode, getDownloadUrl, canDelete, previewMaxMb = 50 }: FileItemProps) {
-  const [previewing, setPreviewing] = useState(false);
-  const downloadUrl = getDownloadUrl(file.name);
-
-  const handleDelete = () => onRequestDelete(file.name);
-
-  const handleDownload = async (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!isTauriApp()) return;
-    e.preventDefault();
-    const toastId = toast.loading(`Descargando ${file.name}…`);
-    try {
-      const res = await fetch(downloadUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      await saveReceivedFile(file.name, blob);
-      toast.success(`${file.name} guardado en Descargas/SrvFiles`, { id: toastId });
-    } catch {
-      toast.error(`Error al descargar ${file.name}`, { id: toastId });
+/**
+ * Descarga nativa (Tauri): en streaming a Descargas/SrvFiles, con progreso y
+ * cancelación en el aviso. Manda el token en la cabecera.
+ */
+export async function downloadWithTauri(url: string, token: string | null, fileName: string): Promise<void> {
+  const id = crypto.randomUUID();
+  const toastId = toast.loading(`Descargando ${fileName}…`, {
+    action: { label: 'Cancelar', onClick: () => void cancelNativeTransfer(id) },
+  });
+  const unlisten = await onNativeProgress('download-progress', id, (p) => {
+    if (p.total > 0) {
+      toast.loading(`Descargando ${fileName}… ${Math.round((p.loaded / p.total) * 100)}%`, {
+        id: toastId,
+        action: { label: 'Cancelar', onClick: () => void cancelNativeTransfer(id) },
+      });
     }
-  };
+  });
+  try {
+    const path = await nativeDownload(url, token, fileName, id);
+    toast.success(`Guardado en ${path}`, { id: toastId });
+  } catch (err) {
+    const msg = String(err);
+    if (msg.includes('cancelled')) toast.info('Descarga cancelada', { id: toastId });
+    else {
+      void log.error('[FileItem] native download failed', { fileName, error: msg });
+      toast.error(`No se pudo descargar ${fileName}`, { id: toastId });
+    }
+  } finally {
+    unlisten();
+  }
+}
+
+/** Descarga en el navegador con un enlace temporal (token de un solo archivo). */
+async function downloadInBrowser(getLinkedUrl: FileItemProps['getLinkedUrl'], fileName: string): Promise<void> {
+  try {
+    const url = await getLinkedUrl(fileName, 'download');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (err) {
+    toast.error(errorMessage(err, `descargar "${fileName}"`));
+  }
+}
+
+export function FileItem({
+  file, onRequestDelete, viewMode, getLinkedUrl, getPlainDownloadUrl, token, canDelete, previewMaxMb = 1024,
+}: FileItemProps) {
+  const [previewing, setPreviewing] = useState(false);
+
+  const download = () => (isTauriApp()
+    ? downloadWithTauri(getPlainDownloadUrl(file.name), token, file.name)
+    : downloadInBrowser(getLinkedUrl, file.name));
 
   const handlePreview = () => {
-    const maxBytes = previewMaxMb * 1024 * 1024;
-    if (file.size > maxBytes) {
+    if (file.size > previewMaxMb * 1024 * 1024) {
       toast.warning(`El archivo es demasiado grande para previsualizar (máx. ${previewMaxMb} MB)`);
       return;
     }
     setPreviewing(true);
   };
 
-  const showEye = canPreview(file.name);
+  const actions = (
+    <>
+      {canPreview(file.name) && (
+        <button onClick={handlePreview} className="btn-icon btn-icon--preview" title="Vista previa" aria-label={`Vista previa de ${file.name}`}>
+          <Eye size={16} />
+        </button>
+      )}
+      <button
+        onClick={() => void download()}
+        className="btn-icon btn-icon--download"
+        title="Descargar"
+        aria-label={`Descargar ${file.name}`}
+      >
+        <Download size={16} />
+      </button>
+      {canDelete && (
+        <button onClick={() => onRequestDelete(file.name)} className="btn-icon btn-icon--delete" title="Eliminar" aria-label={`Eliminar ${file.name}`}>
+          <Trash2 size={16} />
+        </button>
+      )}
+    </>
+  );
 
-  // ─── Eye button (shared between list and grid) ───────────────────
-  const eyeButton = showEye ? (
-    <button onClick={handlePreview} className="btn-icon btn-icon--preview" title="Vista previa">
-      <Eye size={16} />
-    </button>
-  ) : null;
+  const preview = previewing && createPortal(
+    <PreviewModal
+      file={file}
+      getLinkedUrl={getLinkedUrl}
+      onDownload={() => void download()}
+      onClose={() => setPreviewing(false)}
+    />,
+    document.body,
+  );
 
   if (viewMode === 'grid') {
     return (
@@ -67,27 +129,13 @@ export function FileItem({ file, onRequestDelete, viewMode, getDownloadUrl, canD
             <span className="file-card__name" title={file.name}>{file.name}</span>
             <span className="file-card__meta">{formatBytes(file.size)}</span>
           </div>
-          <div className="file-card__actions">
-            {eyeButton}
-            <a href={downloadUrl} className="btn-icon btn-icon--download" title="Descargar" download onClick={handleDownload}>
-              <Download size={16} />
-            </a>
-            {canDelete && (
-              <button onClick={handleDelete} className="btn-icon btn-icon--delete" title="Eliminar">
-                <Trash2 size={16} />
-              </button>
-            )}
-          </div>
+          <div className="file-card__actions">{actions}</div>
         </div>
-        {previewing && createPortal(
-          <PreviewModal file={file} downloadUrl={downloadUrl} onClose={() => setPreviewing(false)} />,
-          document.body,
-        )}
+        {preview}
       </>
     );
   }
 
-  // List view
   return (
     <>
       <tr className="file-row" id={`file-${file.name}`}>
@@ -96,22 +144,9 @@ export function FileItem({ file, onRequestDelete, viewMode, getDownloadUrl, canD
           <span title={file.name}>{file.name}</span>
         </td>
         <td className="file-row__size">{formatBytes(file.size)}</td>
-        <td className="file-row__actions">
-          {eyeButton}
-          <a href={downloadUrl} className="btn-icon btn-icon--download" title="Descargar" download onClick={handleDownload}>
-            <Download size={16} />
-          </a>
-          {canDelete && (
-            <button onClick={handleDelete} className="btn-icon btn-icon--delete" title="Eliminar">
-              <Trash2 size={16} />
-            </button>
-          )}
-        </td>
+        <td className="file-row__actions">{actions}</td>
       </tr>
-      {previewing && createPortal(
-        <PreviewModal file={file} downloadUrl={downloadUrl} onClose={() => setPreviewing(false)} />,
-        document.body,
-      )}
+      {preview}
     </>
   );
 }

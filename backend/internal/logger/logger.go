@@ -3,8 +3,11 @@ package logger
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sync"
+	"testing"
 	"time"
 )
 
@@ -34,16 +37,23 @@ func (l level) String() string {
 	}
 }
 
+// maxFileSize: al superarlo, errors.txt se rota a errors.1.txt.
+const maxFileSize = 2 * 1024 * 1024
+
 // ─── Logger ───────────────────────────────────────────────────────────────────
 
-// Logger writes structured log lines matching the format of the Node.js winston logger:
+// Logger writes structured log lines:
 //
 //	2026-01-01 12:00:00 INFO  [source] message — {"key":"value"}
 //
-// File transport: WARN+ only (logs/errors.txt).
-// Console transport: all levels, only when APP_ENV != "production".
+// File transport: WARN+ only, in LOGS_DIR/errors.txt (default ./logs), with
+// size-based rotation. Console transport: all levels, unless APP_ENV=production.
+// Under `go test` nothing is written to disk.
 type Logger struct {
-	fileOut *os.File
+	mu      sync.Mutex
+	path    string
+	fileOut io.WriteCloser
+	size    int64
 	isDev   bool
 }
 
@@ -51,32 +61,51 @@ type Logger struct {
 var Log = newLogger()
 
 func newLogger() *Logger {
-	logsDir := filepath.Join(".", "logs")
-	_ = os.MkdirAll(logsDir, 0755)
-
-	f, err := os.OpenFile(
-		filepath.Join(logsDir, "errors.txt"),
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		0644,
-	)
-	if err != nil {
-		f = os.Stderr
+	l := &Logger{isDev: os.Getenv("APP_ENV") != "production"}
+	if testing.Testing() {
+		return l
 	}
+	dir := os.Getenv("LOGS_DIR")
+	if dir == "" {
+		dir = filepath.Join(".", "logs")
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "logger: cannot create %s: %v\n", dir, err)
+		return l
+	}
+	l.path = filepath.Join(dir, "errors.txt")
+	l.open()
+	return l
+}
 
-	return &Logger{
-		fileOut: f,
-		isDev:   os.Getenv("APP_ENV") != "production",
+func (l *Logger) open() {
+	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "logger: cannot open %s: %v\n", l.path, err)
+		l.fileOut = nil
+		return
+	}
+	l.fileOut = f
+	if info, err := f.Stat(); err == nil {
+		l.size = info.Size()
 	}
 }
 
+func (l *Logger) rotate() {
+	_ = l.fileOut.Close()
+	_ = os.Rename(l.path, l.path[:len(l.path)-len(".txt")]+".1.txt")
+	l.size = 0
+	l.open()
+}
+
 func (l *Logger) write(lvl level, source, msg string, args ...any) {
-	ts  := time.Now().Format("2006-01-02 15:04:05")
+	ts := time.Now().Format("2006-01-02 15:04:05")
 	src := ""
 	if source != "" {
 		src = fmt.Sprintf("[%s] ", source)
 	}
 
-	// Build context string from key-value pairs (same as winston meta)
+	// Build context string from key-value pairs
 	ctx := ""
 	if len(args) >= 2 {
 		m := make(map[string]any, len(args)/2)
@@ -90,11 +119,23 @@ func (l *Logger) write(lvl level, source, msg string, args ...any) {
 
 	line := fmt.Sprintf("%s %s %s%s%s\n", ts, lvl, src, msg, ctx)
 
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if lvl >= levelWarn {
-		_, _ = fmt.Fprint(l.fileOut, line)
+		if l.fileOut != nil {
+			if l.size > maxFileSize {
+				l.rotate()
+			}
+			if l.fileOut != nil {
+				n, _ := io.WriteString(l.fileOut, line)
+				l.size += int64(n)
+			}
+		} else if !l.isDev {
+			_, _ = io.WriteString(os.Stderr, line)
+		}
 	}
 	if l.isDev {
-		_, _ = fmt.Fprint(os.Stdout, line)
+		_, _ = io.WriteString(os.Stdout, line)
 	}
 }
 

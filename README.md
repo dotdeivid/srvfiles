@@ -13,7 +13,7 @@ Levantás SrvFiles en una computadora — vía web o como app de escritorio (Tau
 - **Subida y descarga** — drag & drop, múltiples archivos, hasta 10 GB por archivo
 - **Previsualización** — abrí imágenes, video, audio, PDF y texto directamente en la UI sin descargar (ver tabla abajo); límite configurable via `PREVIEW_MAX_FILE_SIZE_MB`
 - **Transferencia P2P directa** — enviá archivos de dispositivo a dispositivo sin pasar por disco, vía relay WebSocket
-- **Cifrado E2E en P2P** — intercambio de claves ECDH P-256 + AES-256-GCM; cada sesión usa una clave efímera
+- **Cifrado de extremo a extremo obligatorio en P2P** — cada transferencia negocia su propia clave (ECDH P-256 + AES-256-GCM) entre emisor y receptor; el servidor solo reenvía y no puede leer el contenido. Ambos ven un código de verificación de 6 dígitos y el receptor confirma que coincide antes de aceptar. Cada chunk se autentica con su número de orden. Ver [docs/protocol.md](docs/protocol.md)
 - **Detección automática de servidores** — la UI encuentra otros servidores SrvFiles en la red; podés cambiar desde el header
 - **App de escritorio nativa** — empaquetada con Tauri 2 para macOS, Windows y Linux; actúa simultáneamente como servidor y cliente
 - **Autenticación PIN** — cada servidor genera un PIN automático de 6 dígitos; auto-auth desde localhost

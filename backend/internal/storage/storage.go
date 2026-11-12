@@ -8,7 +8,6 @@ import (
 )
 
 // Init ensures the uploads directory exists at startup.
-// Equivalent to the MkdirSync call in infrastructure/storage.ts.
 func Init() {
 	if err := os.MkdirAll(config.UploadsDir, 0755); err != nil {
 		logger.Log.Error("storage.go", "Failed to create uploads directory",

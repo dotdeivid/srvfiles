@@ -1,107 +1,78 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { scanNetwork, type DiscoveredServer } from './discovery.api';
 import { getApiUrl } from '../files/files.api';
-import { isTauriApp } from '../../lib/tauri';
+import { isTauriApp, getBackendPort } from '../../lib/tauri';
 import { log } from '../../lib/logger';
 
-const LOCALHOST = 'http://localhost:3001';
-
-/**
- * Removes trailing slashes and surrounding whitespace from a URL.
- *
- * @param url - The raw URL string.
- * @returns A normalized URL without a trailing slash.
- */
 function normalize(url: string): string {
   return url.trim().replace(/\/$/, '');
 }
 
 /**
- * Returns `true` when the app is running in a "local" context:
- * inside Tauri, or in a browser on the same machine as the server
- * (`localhost` / `127.0.0.1`).
+ * Decide a qué servidor conectarse.
  *
- * Returns `false` when accessed from a remote device via its LAN IP,
- * meaning the server is already known from `window.location`.
+ * - Tauri: el backend propio, en el puerto que eligió la app.
+ * - Navegador: el servidor que sirvió la página (origen actual). Antes, en
+ *   localhost se escaneaba la red y se elegía el primer servidor encontrado,
+ *   que era el de otra máquina.
  *
- * @returns Boolean indicating whether a network scan is needed to find the server.
+ * `localUrl` es siempre el backend de esta máquina/página (para escanear la
+ * red); `serverUrl` es el servidor que se está viendo.
  */
-function isLocalContext(): boolean {
-  const h = window.location.hostname;
-  return (
-    h === 'localhost' ||
-    h === '127.0.0.1' ||
-    h === 'tauri.localhost' ||
-    '__TAURI_INTERNALS__' in window
-  );
-}
-
 export function useMode() {
   const [serverUrl, setServerUrl] = useState<string | null>(null);
+  const [localUrl, setLocalUrl] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(true);
+  const historyRef = useRef<string[]>([]);
+  const currentRef = useRef<string | null>(null);
+  const [historyLen, setHistoryLen] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-
-    async function autoConnect() {
-      // Tauri: always its own server — no scan needed
-      if (isTauriApp()) {
-        void log.info('[useMode] Tauri context detected, connecting to localhost');
-        if (!cancelled) {
-          setServerUrl(LOCALHOST);
-          setConnecting(false);
-        }
-        return;
-      }
-
-      // Browser accessing a remote server: already there, skip scan
-      if (!isLocalContext()) {
-        const url = normalize(getApiUrl());
-        void log.info('[useMode] remote browser context, using current origin', { url });
-        if (!cancelled) {
-          setServerUrl(url);
-          setConnecting(false);
-        }
-        return;
-      }
-
-      // localhost in browser (dev mode): scan to find the backend
-      void log.info('[useMode] localhost browser context, scanning for backend');
-      let servers: DiscoveredServer[] = [];
-      for (let attempt = 0; attempt < 6; attempt++) {
-        try {
-          servers = await scanNetwork();
-          break;
-        } catch (err) {
-          void log.warn('[useMode] scan attempt failed', { attempt, error: String(err) });
-          await new Promise((r) => setTimeout(r, 500));
-        }
-      }
-
+    (async () => {
+      const url = isTauriApp()
+        ? `http://localhost:${await getBackendPort()}`
+        : normalize(getApiUrl());
       if (cancelled) return;
-
-      const chosen = normalize(servers.length > 0 ? servers[0].url : LOCALHOST);
-      void log.info('[useMode] server resolved', { url: chosen, discovered: servers.length });
-      setServerUrl(chosen);
+      void log.info('[useMode] server resolved', { url, tauri: isTauriApp() });
+      setLocalUrl(url);
+      currentRef.current = url;
+      setServerUrl(url);
       setConnecting(false);
-    }
-
-    autoConnect();
+    })();
     return () => { cancelled = true; };
   }, []);
 
-  /**
-   * Switches the active server to the given URL.
-   *
-   * @param url - The backend base URL to connect to.
-   */
+  /** Cambia al servidor `url`, recordando el anterior para poder volver. */
   const connect = useCallback((url: string) => {
-    setServerUrl(normalize(url));
+    const next = normalize(url);
+    const current = currentRef.current;
+    if (current === next) return;
+    if (current) historyRef.current.push(current);
+    currentRef.current = next;
+    setServerUrl(next);
+    setHistoryLen(historyRef.current.length);
   }, []);
 
-  const rescan = useCallback(async () => {
-    return scanNetwork().catch(() => [] as DiscoveredServer[]);
+  /** Vuelve al servidor anterior (p. ej. si se cancela el PIN). */
+  const goBack = useCallback((): boolean => {
+    const prev = historyRef.current.pop();
+    setHistoryLen(historyRef.current.length);
+    if (!prev) return false;
+    currentRef.current = prev;
+    setServerUrl(prev);
+    return true;
   }, []);
 
-  return { serverUrl, connecting, connect, rescan };
+  const canGoBack = historyLen > 0;
+
+  const rescan = useCallback(async (): Promise<DiscoveredServer[]> => {
+    if (!localUrl) return [];
+    return scanNetwork(localUrl).catch((err) => {
+      void log.warn('[useMode] scan failed', { error: String(err) });
+      return [] as DiscoveredServer[];
+    });
+  }, [localUrl]);
+
+  return { serverUrl, localUrl, connecting, connect, goBack, canGoBack, rescan };
 }

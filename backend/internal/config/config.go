@@ -8,8 +8,8 @@ import (
 
 // ─── Server ──────────────────────────────────────────────────────────────────
 
-var Port      = envInt("PORT", 3001)
-var Host      = envStr("HOST", "0.0.0.0")
+var Port = envInt("PORT", 3001)
+var Host = envStr("HOST", "0.0.0.0")
 var HttpsPort = envInt("HTTPS_PORT", Port+1)
 
 // ─── App ─────────────────────────────────────────────────────────────────────
@@ -18,15 +18,15 @@ var AppName = envStr("APP_NAME", "SrvFiles")
 
 // ─── Files ───────────────────────────────────────────────────────────────────
 
-var FrontendPort     = envInt("FRONTEND_PORT", 5173)
-var MaxFileSizeMB    = envInt("MAX_FILE_SIZE_MB", 10240)
-var MaxUploadCount   = envInt("MAX_UPLOAD_COUNT", 50)
+var FrontendPort = envInt("FRONTEND_PORT", 5173)
+var MaxFileSizeMB = envInt("MAX_FILE_SIZE_MB", 10240)
+var MaxUploadCount = envInt("MAX_UPLOAD_COUNT", 50)
 var PreviewMaxSizeMB = envInt("PREVIEW_MAX_FILE_SIZE_MB", 1024)
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
 var UploadsDir = envStr("UPLOADS_DIR", filepath.Join(".", "uploads"))
-var CertsDir   = envStr("CERTS_DIR", filepath.Join(".", "certs"))
+var CertsDir = envStr("CERTS_DIR", filepath.Join(".", "certs"))
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

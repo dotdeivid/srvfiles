@@ -11,7 +11,6 @@ import (
 
 // Handler handles GET /api/config.
 // Returns the app configuration needed by the frontend.
-// Equivalent to getConfig() in config.controller.ts.
 func Handler(w http.ResponseWriter, r *http.Request) {
 	lanIp := network.GetLanIp()
 	w.Header().Set("Content-Type", "application/json")
@@ -22,7 +21,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		"httpsPort":            config.HttpsPort,
 		"frontendPort":         config.FrontendPort,
 		"maxFileSizeMb":        config.MaxFileSizeMB,
+		"maxUploadCount":       config.MaxUploadCount,
 		"previewMaxFileSizeMb": config.PreviewMaxSizeMB,
-		"lanUrl":               fmt.Sprintf("http://%s", lanIp),
+		"lanUrl":               fmt.Sprintf("http://%s:%d", lanIp, config.Port),
 	})
 }
