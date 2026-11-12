@@ -19,4 +19,5 @@
 - `sanitize_file_name` deja solo el último componente sin caracteres reservados.
 - `create_temp` crea un archivo oculto `.srvfiles-upload-*`: el mismo prefijo que usa el backend Go para sus subidas, que nunca lo lista ni permite descargarlo. Descargas y recepciones se escriben ahí.
 - `publish` lo publica al terminar con el primer nombre libre (`a.txt`, `a (1).txt`…) mediante un hard link, que falla si el nombre existe; en FAT/exFAT cae a renombrar. Nunca sobrescribe.
+- `is_hidden` reconoce los mismos ocultos que el backend (punto inicial, `desktop.ini`, `thumbs.db`, atributos de Windows). `migrate_legacy_uploads` no los mueve y `show_in_folder` los rechaza.
 - `migrate_legacy_uploads` mueve a la carpeta compartida lo que quedó en `<datos de la app>/uploads`, la carpeta que usaba el servidor en versiones anteriores.

@@ -72,6 +72,19 @@ var ErrInvalidName = errors.New("invalid filename")
 // ErrTooLarge: el archivo supera el límite por archivo.
 var ErrTooLarge = errors.New("file too large")
 
+// IsHidden reports whether a file should be treated as hidden on Unix or Windows.
+// It checks for leading dots (Unix/macOS dotfiles like .DS_Store), Windows system
+// metadata files (desktop.ini, thumbs.db), and Windows hidden/system filesystem attributes.
+func IsHidden(name string, info os.FileInfo) bool {
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+	if strings.EqualFold(name, "desktop.ini") || strings.EqualFold(name, "thumbs.db") {
+		return true
+	}
+	return isHiddenPlatform(info)
+}
+
 // ─── Names ───────────────────────────────────────────────────────────────────
 
 // Nombres reservados por Windows (sin extensión o con ella).
@@ -116,7 +129,7 @@ func SanitizeFilename(filename string) (string, error) {
 		sanitized = strings.TrimRight(truncateUTF8(sanitized, 240-len(ext)), ". ") + ext
 	}
 	base := strings.ToUpper(strings.SplitN(sanitized, ".", 2)[0])
-	if windowsReserved[base] {
+	if windowsReserved[base] || strings.EqualFold(sanitized, "desktop.ini") || strings.EqualFold(sanitized, "thumbs.db") {
 		sanitized = "_" + sanitized
 	}
 	return sanitized, nil
@@ -141,7 +154,8 @@ func utf8RuneStart(b byte) bool { return b&0xC0 != 0x80 }
 // acentos aparecían en la lista pero daban 404 al descargar o borrar.
 func ResolvePath(filename string) (string, bool, error) {
 	if filename == "" || filename == "." || filename == ".." ||
-		strings.ContainsAny(filename, "/\\\x00") || strings.HasPrefix(filename, tempPrefix) {
+		strings.ContainsAny(filename, "/\\\x00") || strings.HasPrefix(filename, tempPrefix) ||
+		IsHidden(filename, nil) {
 		return "", false, ErrInvalidName
 	}
 	base, err := filepath.Abs(config.UploadsDir)
@@ -154,7 +168,10 @@ func ResolvePath(filename string) (string, bool, error) {
 		return "", false, ErrInvalidName
 	}
 	info, statErr := os.Stat(filePath)
-	return filePath, statErr == nil && !info.IsDir(), nil
+	if statErr == nil && (info.IsDir() || IsHidden(filename, info)) {
+		return "", false, ErrInvalidName
+	}
+	return filePath, statErr == nil, nil
 }
 
 // ─── List ─────────────────────────────────────────────────────────────────────
@@ -195,11 +212,11 @@ func listFilesFromDisk() ([]FileInfo, error) {
 	var files []FileInfo
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || name == ".gitkeep" || strings.HasPrefix(name, tempPrefix) {
+		if e.IsDir() || IsHidden(name, nil) {
 			continue
 		}
 		info, err := e.Info()
-		if err != nil {
+		if err != nil || IsHidden(name, info) {
 			continue
 		}
 		files = append(files, FileInfo{

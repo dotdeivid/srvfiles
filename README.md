@@ -129,7 +129,7 @@ El archivo de referencia completo está en `backend/internal/config/config.go`.
 | `MAX_FILE_SIZE_MB` | `10240` | Límite de tamaño por archivo (MB) |
 | `MAX_UPLOAD_COUNT` | `50` | Máximo de archivos por request de subida |
 | `PREVIEW_MAX_FILE_SIZE_MB` | `1024` | Límite para previsualización (MB) |
-| `UPLOADS_DIR` | `<cwd>/uploads` | Carpeta de almacenamiento (la app de escritorio usa `Descargas/SrvFiles`) |
+| `UPLOADS_DIR` | `<Descargas>/SrvFiles` | Carpeta compartida: la carpeta Descargas real del sistema (Known Folder en Windows, `user-dirs.dirs` en Linux, `~/Downloads` en macOS), la misma que la app de escritorio y la app Android. Si no hay carpeta de descargas, `./uploads` |
 | `HTTPS_PORT` | `PORT+1` | Puerto HTTPS para navegadores externos |
 | `FRONTEND_PORT` | `5173` | Puerto de Vite en desarrollo (usado en config CORS) |
 | `CERTS_DIR` | `<cwd>/certs` | Carpeta del certificado TLS (auto-generado) |

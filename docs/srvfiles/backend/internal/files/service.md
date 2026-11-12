@@ -8,7 +8,7 @@
 ## Nombres
 
 - `SanitizeFilename(name)` para subidas: normaliza a NFC, se queda con el último componente de la ruta, reemplaza caracteres de control y los reservados de Windows (`: * ? " < > |`), quita puntos y espacios de los extremos, limita a 240 bytes y antepone `_` a nombres reservados (`CON`, `PRN`, …). Conserva letras de cualquier idioma, espacios y `..` dentro del nombre. Error `ErrInvalidName` si queda vacío.
-- `ResolvePath(name)` para lectura y borrado: **valida sin transformar** (rechaza `/`, `\`, NUL, `.`, `..` y temporales) y comprueba que la ruta quede dentro de `UPLOADS_DIR`. Así los archivos copiados a mano con acentos se pueden descargar y borrar.
+- `ResolvePath(name)` para lectura y borrado: **valida sin transformar** (rechaza `/`, `\`, NUL, `.`, `..`, temporales, ocultos y carpetas) y comprueba que la ruta quede dentro de `UPLOADS_DIR`. Así los archivos copiados a mano con acentos se pueden descargar y borrar.
 
 ## Guardado
 
@@ -17,6 +17,10 @@
 1. Copia el contenido a un temporal oculto `.srvfiles-upload-*` (no se lista).
 2. Si supera `maxBytes` → `ErrTooLarge` sin dejar nada en disco.
 3. Publica con `os.Link` al nombre final, que falla si ya existe: dos subidas simultáneas con el mismo nombre nunca se pisan (`nombre (1).ext`, `nombre (2).ext`…). Si el sistema de archivos no soporta hard links usa `rename`.
+
+## Archivos ocultos
+
+`IsHidden(name, info)`: empieza con punto (`.DS_Store`, `.gitkeep`, temporales), `desktop.ini`, `thumbs.db`, o tiene atributo oculto/de sistema en Windows (`hidden_windows.go`). No se listan ni se pueden descargar o borrar por la API. `SanitizeFilename` antepone `_` a `desktop.ini`/`thumbs.db` para que una subida con ese nombre no quede oculta.
 
 ## Listado y otros
 

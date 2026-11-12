@@ -23,6 +23,8 @@
 - La lista se actualiza sola (evento `files-changed`) al subir, borrar o cuando aparece un archivo nuevo en la carpeta del servidor por fuera de la API (recibido por la app de escritorio, copiado a mano)
 - Íconos por tipo de archivo (texto y Markdown 📝, PDF, imágenes, video, audio, comprimidos, instaladores, código, datos, hojas de cálculo); los tipos desconocidos usan un documento genérico 📃
 - Eliminar archivos con diálogo de confirmación
+- Carpeta compartida por defecto: `Descargas/SrvFiles` del sistema, en el servidor web, la app de escritorio y la app Android
+- Los archivos ocultos de la carpeta (`.DS_Store`, `desktop.ini`, `thumbs.db`, ocultos/de sistema en Windows) no se listan ni se pueden descargar
 - Búsqueda en tiempo real por nombre (case-insensitive, filtro frontend)
 - Indicador de espacio en disco (total / usado / libre con barra visual)
 

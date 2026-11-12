@@ -34,6 +34,10 @@ func TestSanitizeFilename(t *testing.T) {
 		"a:b*c?.txt":       "a_b_c_.txt",
 		"  .oculto.  ":     "oculto",
 		"CON.txt":          "_CON.txt",
+		"desktop.ini":      "_desktop.ini",
+		"DESKTOP.INI":      "_DESKTOP.INI",
+		"thumbs.db":        "_thumbs.db",
+		"Thumbs.db":        "_Thumbs.db",
 		"emoji 🎉.png":      "emoji 🎉.png",
 		"café.txt":        "café.txt", // NFD → NFC
 	}
@@ -59,10 +63,62 @@ func TestResolvePathValidatesWithoutTransforming(t *testing.T) {
 	if _, exists, err := ResolvePath("Canción ñ.mp3"); err != nil || !exists {
 		t.Fatalf("existing accented file not resolved: exists=%v err=%v", exists, err)
 	}
-	for _, bad := range []string{"../secret", "..", "a/b", `a\b`, "", tempPrefix + "x"} {
+	for _, bad := range []string{"../secret", "..", "a/b", `a\b`, "", tempPrefix + "x", ".DS_Store", "desktop.ini", "thumbs.db"} {
 		if _, _, err := ResolvePath(bad); !errors.Is(err, ErrInvalidName) {
 			t.Errorf("ResolvePath(%q) should be rejected", bad)
 		}
+	}
+}
+
+func TestHiddenFilesAreExcludedFromListAndRejected(t *testing.T) {
+	dir := useTempUploads(t)
+
+	hiddenNames := []string{
+		".DS_Store",
+		".gitkeep",
+		".hidden_file",
+		"desktop.ini",
+		"DESKTOP.INI",
+		"thumbs.db",
+		"Thumbs.db",
+	}
+
+	for _, name := range hiddenNames {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("hidden"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "visible.txt"), []byte("visible"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := ListFiles()
+	if err != nil {
+		t.Fatalf("ListFiles failed: %v", err)
+	}
+
+	if len(files) != 1 {
+		t.Fatalf("ListFiles returned %d files, expected 1 (got: %+v)", len(files), files)
+	}
+	if files[0].Name != "visible.txt" {
+		t.Fatalf("ListFiles returned %s, expected visible.txt", files[0].Name)
+	}
+
+	for _, name := range hiddenNames {
+		if !IsHidden(name, nil) {
+			t.Errorf("IsHidden(%q, nil) = false, want true", name)
+		}
+		if _, _, err := ResolvePath(name); !errors.Is(err, ErrInvalidName) {
+			t.Errorf("ResolvePath(%q) = %v, want ErrInvalidName", name, err)
+		}
+	}
+
+	if IsHidden("visible.txt", nil) {
+		t.Errorf("IsHidden(visible.txt, nil) = true, want false")
+	}
+	if _, exists, err := ResolvePath("visible.txt"); err != nil || !exists {
+		t.Errorf("ResolvePath(visible.txt) exists=%v, err=%v", exists, err)
 	}
 }
 
