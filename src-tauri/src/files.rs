@@ -55,6 +55,30 @@ struct Progress<'a> {
 
 // ─── Names & paths ───────────────────────────────────────────────────────────
 
+/// Comprueba si un archivo debe considerarse oculto en Unix/macOS o Windows:
+/// archivos que empiezan con '.', archivos de sistema de Windows (desktop.ini,
+/// thumbs.db) o con atributos HIDDEN / SYSTEM en Windows.
+pub fn is_hidden(name: &str, meta: Option<&std::fs::Metadata>) -> bool {
+    if name.starts_with('.') {
+        return true;
+    }
+    let lower = name.to_ascii_lowercase();
+    if lower == "desktop.ini" || lower == "thumbs.db" {
+        return true;
+    }
+    #[cfg(windows)]
+    if let Some(m) = meta {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+        const FILE_ATTRIBUTE_SYSTEM: u32 = 0x4;
+        if m.file_attributes() & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) != 0 {
+            return true;
+        }
+    }
+    let _ = meta;
+    false
+}
+
 /// Nombre seguro: último componente, sin control ni reservados de Windows,
 /// sin puntos/espacios en los extremos.
 pub fn sanitize_file_name(name: &str) -> String {
@@ -133,7 +157,8 @@ pub fn migrate_legacy_uploads(from: &Path, to: &Path) {
     let Ok(entries) = std::fs::read_dir(from) else { return };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if name == ".gitkeep" || name.starts_with(TEMP_PREFIX) || !entry.path().is_file() {
+        let meta = entry.metadata().ok();
+        if is_hidden(&name, meta.as_ref()) || !entry.path().is_file() {
             continue;
         }
         let src = entry.path();
@@ -176,6 +201,8 @@ pub fn path_info(paths: Vec<String>) -> Vec<PathInfo> {
     paths
         .into_iter()
         .filter_map(|p| {
+            // No se filtran los archivos ocultos: el servidor ya limpia el
+            // nombre al guardar (".env" → "env"), igual que en el navegador.
             let meta = std::fs::metadata(&p).ok()?;
             if !meta.is_file() {
                 return None;
@@ -347,13 +374,17 @@ async fn do_download(
 /// disco, descargarlo de nuevo solo crearía una copia.
 #[tauri::command]
 pub fn show_in_folder(app: AppHandle, file_name: String) -> Result<(), String> {
-    if file_name.starts_with(TEMP_PREFIX) || sanitize_file_name(&file_name) != file_name {
+    if is_hidden(&file_name, None) || file_name.starts_with(TEMP_PREFIX) || sanitize_file_name(&file_name) != file_name {
         return Err("nombre inválido".into());
     }
     let dir = downloads_dir(&app)?;
     let path = dir.join(&file_name);
-    if !path.is_file() {
-        return Err("El archivo ya no existe".into());
+    let meta = match std::fs::metadata(&path) {
+        Ok(m) if m.is_file() => m,
+        _ => return Err("El archivo ya no existe".into()),
+    };
+    if is_hidden(&file_name, Some(&meta)) {
+        return Err("nombre inválido".into());
     }
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("open").arg("-R").arg(&path).spawn();
@@ -469,5 +500,18 @@ mod tests {
         assert_eq!(sanitize_file_name("a:b?.txt"), "a_b_.txt");
         assert_eq!(sanitize_file_name("año señal.txt"), "año señal.txt");
         assert_eq!(sanitize_file_name(".."), "archivo");
+    }
+
+    #[test]
+    fn hidden_files_are_detected() {
+        assert!(super::is_hidden(".DS_Store", None));
+        assert!(super::is_hidden(".gitkeep", None));
+        assert!(super::is_hidden(".hidden", None));
+        assert!(super::is_hidden("desktop.ini", None));
+        assert!(super::is_hidden("DESKTOP.INI", None));
+        assert!(super::is_hidden("thumbs.db", None));
+        assert!(super::is_hidden("Thumbs.db", None));
+        assert!(!super::is_hidden("normal.txt", None));
+        assert!(!super::is_hidden("foto.jpg", None));
     }
 }

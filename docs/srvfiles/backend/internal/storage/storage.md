@@ -5,4 +5,4 @@
 
 ---
 
-`Init()` crea `UPLOADS_DIR` si no existe (lo llama `main` al arrancar).
+`Init()` crea `UPLOADS_DIR` si no existe (lo llama `main` al arrancar). Si no puede (p. ej. sin permiso sobre Descargas), usa `./uploads` y lo registra en el log.

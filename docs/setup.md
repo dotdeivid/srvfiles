@@ -124,6 +124,8 @@ npm run dev
 Abrí `http://localhost:5173` en el navegador.
 Otros dispositivos en la red acceden por `https://<tu-ip>:3002` (aceptar el certificado autofirmado la primera vez). `http://<tu-ip>:3001` y `<tu-ip>:3002` sin `https://` redirigen ahí.
 
+Los archivos se guardan en `<Descargas>/SrvFiles`, la misma carpeta que usa la app de escritorio (se crea sola). En macOS, la primera vez el sistema pide permiso para que la Terminal acceda a Descargas. Para usar otra carpeta: `UPLOADS_DIR=/ruta npm run dev`.
+
 Cuando **modificás el backend Go** el servidor no recarga solo — reiniciá el script:
 
 ```bash
