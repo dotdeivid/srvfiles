@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"srvfiles/internal/announce"
 	"srvfiles/internal/auth"
 	"srvfiles/internal/cert"
 	"srvfiles/internal/config"
@@ -72,6 +73,13 @@ func main() {
 	// (recibidos por la app de escritorio, copiados a mano): avisar a los clientes.
 	go files.WatchUploadsDir(2 * time.Second)
 
+	// Anuncio mDNS: los teléfonos encuentran el servidor sin barrer la red.
+	stopAnnounce, err := announce.Start(config.Port, config.HttpsPort, network.LanIPs())
+	if err != nil {
+		logger.Log.Warn("main.go", "mDNS announcement disabled", "error", err)
+		stopAnnounce = func() {}
+	}
+
 	// ─── Startup banner ───────────────────────────────────────────────────
 	fmt.Printf("\n🗂️  %s running!\n", config.AppName)
 	fmt.Printf("   Local:          http://localhost:%d\n", config.Port)
@@ -96,6 +104,7 @@ func main() {
 	<-quit
 
 	logger.Log.Info("main.go", "Servers shutting down")
+	stopAnnounce()
 	auth.ResetAuth()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

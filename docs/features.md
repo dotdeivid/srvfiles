@@ -78,6 +78,7 @@
 - Solo activo en contextos seguros (`localhost` o HTTPS) — `crypto.subtle` requerido
 
 ### Descubrimiento de red
+- El backend se anuncia por mDNS como `_srvfiles._tcp` (TXT: `app=srvfiles`, `deviceType=desktop`, `httpsPort`): las apps móviles lo encuentran sin barrer la red
 - Modal "Cambiar servidor" con lista de servidores SrvFiles detectados en la red
 - Botón de rescan manual con indicador de carga
 - Ingreso manual de URL
@@ -142,6 +143,7 @@ Todas las funcionalidades de Web, más:
 - Descargar archivos a `Download/SrvFiles/`
 - Eliminar archivos con diálogo de confirmación
 - Compartir archivos (integración con share sheet del SO)
+- Acciones sobre varios archivos: "Seleccionar" en el menú contextual (mantener presionado) activa el modo selección; la barra permite seleccionar todo, descargar, compartir y eliminar los marcados. Atrás sale del modo selección
 - Copiar enlace directo de descarga al portapapeles
 - Búsqueda por nombre en tiempo real
 - Indicador de espacio en disco (total / usado / libre)
@@ -194,10 +196,10 @@ Todas las funcionalidades de Web, más:
 - ConnectSheet: panel con IP, PIN, puerto y estado del servidor, accesible desde el header
 
 ### Descubrimiento de red
-- Escaneo automático de la subred `/24` al arrancar
-- Probing paralelo de 254 hosts con timeout de 3 segundos
-- Identificación por `{ status: "ok", app: "SrvFiles" }` en `/api/health`
-- Actualización periódica de la lista de servidores disponibles
+- Descubrimiento por mDNS (`_srvfiles._tcp`, Android NSD / iOS Bonjour): cada teléfono anuncia su relay y el backend de escritorio se anuncia también; los demás solo escuchan
+- Cada resultado se valida con `/api/health` (`{ status: "ok", app: "srvfiles" }`)
+- Si mDNS no encuentra nada en una búsqueda manual o al entrar en modo directo, barre la subred `/24` (32 peticiones a la vez) para encontrar equipos con versiones anteriores
+- Actualización periódica cada 30 s solo por mDNS, en pausa en segundo plano
 
 ### Ciclo de vida y background
 - Servicio en primer plano (Android): mantiene el WebSocket activo con la pantalla bloqueada

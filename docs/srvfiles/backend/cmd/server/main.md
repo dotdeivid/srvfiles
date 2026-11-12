@@ -14,6 +14,7 @@
 5. `startHTTPS()` en `HTTPS_PORT` con el certificado de `cert.GetOrCreateCert` (si falla, sigue solo con HTTP). El puerto usa `tlsmux.Split`: las conexiones TLS van al servidor HTTPS y las de HTTP plano (alguien que escribió la IP sin `https://`) a un servidor que redirige a `https://` en el mismo puerto.
    - Si HTTPS arrancó, el servidor HTTP se envuelve con `webguard.RedirectToHTTPS`: los navegadores de otros equipos que abren la web por HTTP pasan a HTTPS.
    - `go files.WatchUploadsDir(2 * time.Second)`: avisa `files-changed` cuando la carpeta cambia por fuera de la API.
+   - `announce.Start`: anuncio mDNS `_srvfiles._tcp` en el puerto HTTP; si falla solo se registra un aviso. Se detiene al apagar.
 6. Imprime el banner con las URLs, la carpeta compartida y el PIN; espera SIGINT/SIGTERM y apaga con `Shutdown` (5 s).
 
 ## `newRouter()`
