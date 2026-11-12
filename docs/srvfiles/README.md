@@ -8,6 +8,7 @@ Un documento por archivo de código, en la misma ruta. El protocolo entre client
 - [backend/cmd/server/main](backend/cmd/server/main.md)
 - [backend/cmd/server/spa_dev](backend/cmd/server/spa_dev.md)
 - [backend/cmd/server/spa_embed](backend/cmd/server/spa_embed.md)
+- [backend/internal/announce/announce](backend/internal/announce/announce.md)
 - [backend/internal/auth/handler](backend/internal/auth/handler.md)
 - [backend/internal/auth/middleware](backend/internal/auth/middleware.md)
 - [backend/internal/auth/service](backend/internal/auth/service.md)
