@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -107,4 +108,44 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		next.ServeHTTP(w, r)
 	})
+}
+
+// RedirectToHTTPS manda a https://<host>:<httpsPort> las páginas que un
+// navegador de otro equipo abre por HTTP. Sin contexto seguro el navegador
+// no tiene WebCrypto y no puede enviar ni recibir archivos (cifrado de
+// extremo a extremo obligatorio).
+//
+// No se redirige:
+//   - la API ni el WebSocket (/api/*, /ws): los usan la app móvil, la de
+//     escritorio y el descubrimiento de red por HTTP;
+//   - esta máquina (localhost ya es un contexto seguro);
+//   - métodos que no sean GET/HEAD.
+//
+// Redirección temporal (302): si HTTPS se desactiva no queda cacheada.
+func RedirectToHTTPS(httpsPort int) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !shouldRedirectToHTTPS(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			host := r.Host
+			if h, _, err := net.SplitHostPort(host); err == nil {
+				host = h
+			}
+			host = strings.Trim(host, "[]")
+			target := "https://" + net.JoinHostPort(host, strconv.Itoa(httpsPort)) + r.URL.RequestURI()
+			http.Redirect(w, r, target, http.StatusFound)
+		})
+	}
+}
+
+func shouldRedirectToHTTPS(r *http.Request) bool {
+	if r.TLS != nil || (r.Method != http.MethodGet && r.Method != http.MethodHead) {
+		return false
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/ws" {
+		return false
+	}
+	return !IsLoopback(r) && !HasLocalHost(r)
 }

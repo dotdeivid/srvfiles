@@ -302,6 +302,7 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
             token={getToken(serverUrl)}
             canDelete={true}
             previewMaxMb={config?.previewMaxFileSizeMb}
+            isLocal={isOwnServer}
           />
         </main>
 

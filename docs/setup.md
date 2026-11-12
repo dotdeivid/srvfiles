@@ -90,7 +90,7 @@ echo 'source $HOME/.cargo/env' >> ~/.bashrc
 # Node.js via nvm
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
 source ~/.bashrc
-nvm install 20
+nvm install 24
 ```
 
 ---
@@ -122,7 +122,7 @@ npm run dev
 ```
 
 Abrí `http://localhost:5173` en el navegador.
-Otros dispositivos en la red acceden por `https://<tu-ip>:3002` (aceptar el certificado autofirmado la primera vez).
+Otros dispositivos en la red acceden por `https://<tu-ip>:3002` (aceptar el certificado autofirmado la primera vez). `http://<tu-ip>:3001` y `<tu-ip>:3002` sin `https://` redirigen ahí.
 
 Cuando **modificás el backend Go** el servidor no recarga solo — reiniciá el script:
 
@@ -206,7 +206,7 @@ El binario Go final pesa ~8 MB e incluye el frontend embebido. No requiere Go, N
 
 ### Requisitos
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) ≥ 3.11
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) ≥ 3.50
 - Android Studio o Xcode según la plataforma destino
 - Un dispositivo Android/iOS conectado o emulador
 

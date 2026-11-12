@@ -71,6 +71,11 @@ export function nativeDownload(url: string, token: string | null, fileName: stri
   return invoke<string>('download_file', { url, token, fileName, id });
 }
 
+/** Muestra un archivo de la carpeta compartida (Descargas/SrvFiles) en el explorador. */
+export function showInFolder(fileName: string): Promise<void> {
+  return invoke<void>('show_in_folder', { fileName });
+}
+
 export function cancelNativeTransfer(id: string): Promise<void> {
   return invoke<void>('cancel_transfer', { id });
 }

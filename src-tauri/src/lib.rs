@@ -7,6 +7,7 @@
 //! - Comandos nativos para subir, descargar y recibir archivos en streaming.
 //!   El webview no tiene permisos de sistema de archivos: todo lo que se
 //!   escribe va a `Descargas/SrvFiles` con el nombre saneado.
+//! - `Descargas/SrvFiles` es también la carpeta que comparte el servidor.
 
 mod files;
 
@@ -62,7 +63,17 @@ fn spawn_backend(app: &AppHandle) -> Result<(), String> {
     let backend = app.state::<Backend>();
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let log_dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
-    let uploads_dir = data_dir.join("uploads");
+    // La carpeta compartida es Descargas/SrvFiles: la misma donde quedan los
+    // archivos recibidos y descargados, así aparecen en la lista. Antes era
+    // <datos de la app>/uploads; lo que haya ahí se mueve una sola vez.
+    let legacy_uploads = data_dir.join("uploads");
+    let uploads_dir = files::downloads_dir(app).unwrap_or_else(|e| {
+        log::warn!("Descargas no disponible ({e}); se usa la carpeta de datos de la app");
+        legacy_uploads.clone()
+    });
+    if uploads_dir != legacy_uploads {
+        files::migrate_legacy_uploads(&legacy_uploads, &uploads_dir);
+    }
     let certs_dir = data_dir.join("certs");
     let backend_logs = log_dir.join("backend");
     for dir in [&uploads_dir, &certs_dir, &backend_logs] {
@@ -196,6 +207,7 @@ pub fn run() {
             files::append_receive,
             files::finish_receive,
             files::abort_receive,
+            files::show_in_folder,
         ])
         .setup(|app| {
             log::info!("SrvFiles Tauri app starting up");

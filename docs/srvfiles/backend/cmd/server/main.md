@@ -11,7 +11,9 @@
 2. Conecta `files.OnFilesChanged` con `transfer.Default.BroadcastFilesChanged` (evento `files-changed` por WebSocket).
 3. `newRouter()` y `auth.GeneratePin()`.
 4. Escucha HTTP en `HOST:PORT` de forma síncrona: si el puerto está ocupado escribe `SRVFILES_ERROR port_in_use <puerto>` en stderr (la app de escritorio lo muestra en un diálogo) y sale con código 1.
-5. `startHTTPS()` en `HTTPS_PORT` con el certificado de `cert.GetOrCreateCert` (si falla, sigue solo con HTTP).
+5. `startHTTPS()` en `HTTPS_PORT` con el certificado de `cert.GetOrCreateCert` (si falla, sigue solo con HTTP). El puerto usa `tlsmux.Split`: las conexiones TLS van al servidor HTTPS y las de HTTP plano (alguien que escribió la IP sin `https://`) a un servidor que redirige a `https://` en el mismo puerto.
+   - Si HTTPS arrancó, el servidor HTTP se envuelve con `webguard.RedirectToHTTPS`: los navegadores de otros equipos que abren la web por HTTP pasan a HTTPS.
+   - `go files.WatchUploadsDir(2 * time.Second)`: avisa `files-changed` cuando la carpeta cambia por fuera de la API.
 6. Imprime el banner con las URLs y el PIN; espera SIGINT/SIGTERM y apaga con `Shutdown` (5 s).
 
 ## `newRouter()`

@@ -7,7 +7,8 @@
 ## Web (navegador)
 
 ### Conexión y autenticación
-- Detección automática del servidor al abrir la app (escanea la red local con 6 reintentos × 500 ms)
+- El navegador se conecta al servidor que le sirvió la página; la app de escritorio, a su propio backend
+- Abrir la web por HTTP desde otro equipo (`http://192.168.x.x:3001`) o escribir la IP sin `https://` en el puerto HTTPS (`192.168.x.x:3002`) redirige solo a `https://192.168.x.x:3002`: sin HTTPS el navegador no puede cifrar ni transferir. La API y el WebSocket siguen disponibles por HTTP para las apps
 - Auto-autenticación desde `localhost` (obtiene el PIN sin mostrar diálogo)
 - Diálogo de PIN para servidores remotos (6 dígitos)
 - Token de sesión persistido en `sessionStorage`; se re-pide si el servidor lo invalida
@@ -18,7 +19,9 @@
 - Subir archivos con drag & drop y zona visual de drop
 - Subida múltiple en un solo request
 - Barra de progreso real durante la subida (porcentaje exacto)
-- Descarga de archivos con atributo `download` nativo del navegador
+- Descarga de archivos con un enlace temporal de un solo archivo (el token de sesión nunca va en la URL)
+- La lista se actualiza sola (evento `files-changed`) al subir, borrar o cuando aparece un archivo nuevo en la carpeta del servidor por fuera de la API (recibido por la app de escritorio, copiado a mano)
+- Íconos por tipo de archivo (texto y Markdown 📝, PDF, imágenes, video, audio, comprimidos, instaladores, código, datos, hojas de cálculo); los tipos desconocidos usan un documento genérico 📃
 - Eliminar archivos con diálogo de confirmación
 - Búsqueda en tiempo real por nombre (case-insensitive, filtro frontend)
 - Indicador de espacio en disco (total / usado / libre con barra visual)
@@ -92,11 +95,12 @@
 
 Todas las funcionalidades de Web, más:
 
-### Descarga de archivos
-- Descarga a `~/Downloads/SrvFiles/` automáticamente (sin diálogo del navegador)
-- Creación del directorio `SrvFiles` si no existe
-- Toast con ruta de destino al completar
-- Mismo comportamiento para archivos recibidos por P2P
+### Carpeta compartida: `Descargas/SrvFiles`
+- Es la carpeta que comparte el servidor interno **y** donde quedan las descargas y los archivos recibidos por P2P: todo aparece en la lista de archivos
+- Los archivos en curso se escriben con un nombre temporal oculto y se publican al terminar (nunca se sobrescribe: `foto (1).jpg`)
+- Al actualizar desde versiones anteriores, lo que había en `<datos de la app>/uploads` se mueve a `Descargas/SrvFiles` una sola vez
+- Viendo el propio servidor, el botón de descarga pasa a "Mostrar en la carpeta" (abre el explorador del sistema): el archivo ya está en el disco
+- Descargas desde otros servidores: directo a `Descargas/SrvFiles` (sin diálogo del navegador), con progreso y cancelación
 
 ### Backend embebido
 - Backend Go corre como sidecar (proceso autónomo) junto a la app
@@ -228,9 +232,10 @@ Todas las funcionalidades de Web, más:
 
 ### Seguridad
 - Path traversal prevenido con sanitización de filenames en el backend
-- PIN con hash SHA-256 (nunca se almacena en plano en producción)
-- Rate limiting: 5 intentos fallidos → bloqueo 60 s por IP
-- Tokens de sesión UUID sin estado en el servidor (limpios al reiniciar)
+- PIN de 6 dígitos solo en memoria, comparado en tiempo constante; `/api/pin` solo responde a esta máquina
+- Rate limiting: 5 intentos fallidos → bloqueo 60 s por IP, y límite global de 20 fallos por minuto
+- Tokens de sesión en memoria, vencen tras 12 h sin uso (limpios al reiniciar)
+- Solo orígenes permitidos pueden usar la API y el WebSocket (en el backend Go y en el relay del móvil)
 - Cifrado de extremo a extremo obligatorio en transferencias P2P (ECDH P-256 + HKDF + AES-256-GCM), con código de verificación
 
 ### API REST del backend
