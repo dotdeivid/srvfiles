@@ -19,10 +19,12 @@ interface FileListProps {
   token: string | null;
   canDelete: boolean;
   previewMaxMb?: number;
+  /** La app de escritorio viendo su propio servidor: los archivos ya están en el disco. */
+  isLocal?: boolean;
 }
 
 export function FileList({
-  files, loading, onRequestDelete, getLinkedUrl, getPlainDownloadUrl, token, canDelete, previewMaxMb,
+  files, loading, onRequestDelete, getLinkedUrl, getPlainDownloadUrl, token, canDelete, previewMaxMb, isLocal = false,
 }: FileListProps) {
   const [viewMode, setViewMode]   = useState<'list' | 'grid'>('list');
   const [inputValue, setInputValue] = useState('');
@@ -160,6 +162,7 @@ export function FileList({
                       getPlainDownloadUrl={getPlainDownloadUrl}
                       token={token}
                       canDelete={canDelete}
+                      isLocal={isLocal}
                       previewMaxMb={previewMaxMb}
                     />
                   ))}
@@ -181,6 +184,7 @@ export function FileList({
                     getPlainDownloadUrl={getPlainDownloadUrl}
                     token={token}
                     canDelete={canDelete}
+                    isLocal={isLocal}
                     previewMaxMb={previewMaxMb}
                   />
                 ))
@@ -203,6 +207,7 @@ export function FileList({
               getPlainDownloadUrl={getPlainDownloadUrl}
               token={token}
               canDelete={canDelete}
+              isLocal={isLocal}
               previewMaxMb={previewMaxMb}
             />
           ))}

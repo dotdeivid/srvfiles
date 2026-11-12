@@ -5,7 +5,7 @@ interface Props {
 export function UnknownPreview({ onDownload }: Props) {
   return (
     <div className="preview-unknown">
-      <span className="preview-unknown__icon">📁</span>
+      <span className="preview-unknown__icon">📃</span>
       <p className="preview-unknown__text">
         Este tipo de archivo no se puede previsualizar.
       </p>

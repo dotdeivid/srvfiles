@@ -8,6 +8,11 @@
 //!
 //! Los nombres que vienen de la red se sanean (solo el último componente, sin
 //! caracteres reservados) y nunca se sobrescribe: se agrega " (n)".
+//!
+//! `Descargas/SrvFiles` es también la carpeta que comparte el servidor interno
+//! (ver `lib.rs`): lo recibido aparece en la lista de archivos. Mientras se
+//! escribe, el archivo tiene un nombre temporal oculto que el servidor no
+//! lista, y se publica con su nombre real al terminar.
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -25,6 +30,10 @@ use tokio_util::io::ReaderStream;
 
 const SUBFOLDER: &str = "SrvFiles";
 
+/// Prefijo de los archivos en curso. Es el mismo que usa el backend Go para
+/// sus subidas: no los lista ni permite descargarlos.
+const TEMP_PREFIX: &str = ".srvfiles-upload-";
+
 #[derive(Default)]
 pub struct Transfers {
     cancel: Mutex<HashMap<String, Arc<AtomicBool>>>,
@@ -33,7 +42,8 @@ pub struct Transfers {
 
 struct Receive {
     file: File,
-    path: PathBuf,
+    tmp: PathBuf,
+    name: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -61,29 +71,85 @@ pub fn sanitize_file_name(name: &str) -> String {
     }
 }
 
-fn downloads_dir(app: &AppHandle) -> Result<PathBuf, String> {
+/// `Descargas/SrvFiles`: destino de descargas y recepciones, y carpeta del servidor interno.
+pub fn downloads_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().download_dir().map_err(|e| e.to_string())?.join(SUBFOLDER);
     std::fs::create_dir_all(&dir).map_err(|e| format!("No se pudo crear {}: {e}", dir.display()))?;
     Ok(dir)
 }
 
-/// Crea (sin sobrescribir) un archivo nuevo en `dir`, agregando " (n)" si hace falta.
-fn create_unique(dir: &Path, name: &str) -> Result<(File, PathBuf), String> {
+/// Nombres candidatos para `name` en orden: "a.txt", "a (1).txt", "a (2).txt"…
+fn candidate_names(name: &str) -> impl Iterator<Item = String> {
     let safe = sanitize_file_name(name);
     let (stem, ext) = match safe.rfind('.') {
-        Some(i) if i > 0 => (&safe[..i], &safe[i..]),
-        _ => (safe.as_str(), ""),
+        Some(i) if i > 0 => (safe[..i].to_string(), safe[i..].to_string()),
+        _ => (safe.clone(), String::new()),
     };
-    for n in 0..10_000 {
-        let candidate = if n == 0 { safe.clone() } else { format!("{stem} ({n}){ext}") };
-        let path = dir.join(&candidate);
+    (0..10_000).map(move |n| if n == 0 { safe.clone() } else { format!("{stem} ({n}){ext}") })
+}
+
+/// Crea un archivo temporal oculto en `dir` para escribir algo en curso.
+fn create_temp(dir: &Path) -> Result<(File, PathBuf), String> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    for n in 0..1_000 {
+        let path = dir.join(format!("{TEMP_PREFIX}{nanos:x}-{n}"));
         match OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(file) => return Ok((file, path)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(format!("No se pudo crear el archivo: {e}")),
         }
     }
+    Err("No se pudo crear un archivo temporal".into())
+}
+
+/// Publica `tmp` en `dir` con el primer nombre libre (nunca sobrescribe).
+/// Usa un hard link, que falla si el nombre existe; en sistemas de archivos
+/// sin hard links (FAT/exFAT) cae a renombrar.
+fn publish(tmp: &Path, dir: &Path, name: &str) -> Result<PathBuf, String> {
+    for candidate in candidate_names(name) {
+        let path = dir.join(&candidate);
+        match std::fs::hard_link(tmp, &path) {
+            Ok(()) => {
+                let _ = std::fs::remove_file(tmp);
+                return Ok(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) if !path.exists() => {
+                std::fs::rename(tmp, &path).map_err(|e| format!("No se pudo guardar el archivo: {e}"))?;
+                return Ok(path);
+            }
+            Err(_) => continue,
+        }
+    }
     Err("No hay un nombre libre para el archivo".into())
+}
+
+/// Mueve a `to` los archivos que quedaron en la carpeta que usaba el servidor
+/// antes (datos de la app), para que sigan apareciendo en la lista.
+pub fn migrate_legacy_uploads(from: &Path, to: &Path) {
+    let Ok(entries) = std::fs::read_dir(from) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == ".gitkeep" || name.starts_with(TEMP_PREFIX) || !entry.path().is_file() {
+            continue;
+        }
+        let src = entry.path();
+        let moved = candidate_names(&name).map(|c| to.join(c)).find(|p| !p.exists()).and_then(|dest| {
+            std::fs::rename(&src, &dest)
+                .or_else(|_| std::fs::copy(&src, &dest).and_then(|_| std::fs::remove_file(&src)))
+                .ok()
+                .map(|_| dest)
+        });
+        match moved {
+            Some(dest) => log::info!("Archivo movido a la carpeta compartida: {dest:?}"),
+            None => log::warn!("No se pudo mover {src:?} a {to:?}"),
+        }
+    }
+    let _ = std::fs::remove_file(from.join(".gitkeep"));
+    let _ = std::fs::remove_dir(from); // solo si quedó vacía
 }
 
 fn register_cancel(state: &Transfers, id: &str) -> Arc<AtomicBool> {
@@ -244,7 +310,7 @@ async fn do_download(
     let total = resp.content_length().unwrap_or(0);
 
     let dir = downloads_dir(app)?;
-    let (file, path) = create_unique(&dir, file_name)?;
+    let (file, tmp) = create_temp(&dir)?;
     let mut out = tokio::fs::File::from_std(file);
     let mut stream = resp.bytes_stream();
     let mut loaded: u64 = 0;
@@ -264,25 +330,49 @@ async fn do_download(
     .await;
 
     drop(out);
-    match outcome {
-        Ok(()) => Ok(path.to_string_lossy().to_string()),
+    let published = outcome.and_then(|()| publish(&tmp, &dir, file_name));
+    match published {
+        Ok(path) => Ok(path.to_string_lossy().to_string()),
         Err(e) => {
-            let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(&tmp);
             Err(e)
         }
     }
 }
 
+// ─── Carpeta compartida ──────────────────────────────────────────────────────
+
+/// Muestra `file_name` de `Descargas/SrvFiles` en el explorador del sistema.
+/// Lo usa la app cuando ve su propio servidor: el archivo ya está en el
+/// disco, descargarlo de nuevo solo crearía una copia.
+#[tauri::command]
+pub fn show_in_folder(app: AppHandle, file_name: String) -> Result<(), String> {
+    if file_name.starts_with(TEMP_PREFIX) || sanitize_file_name(&file_name) != file_name {
+        return Err("nombre inválido".into());
+    }
+    let dir = downloads_dir(&app)?;
+    let path = dir.join(&file_name);
+    if !path.is_file() {
+        return Err("El archivo ya no existe".into());
+    }
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg("-R").arg(&path).spawn();
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open").arg(&dir).spawn();
+    result.map(|_| ()).map_err(|e| format!("No se pudo abrir la carpeta: {e}"))
+}
+
 // ─── P2P receive ─────────────────────────────────────────────────────────────
 
-/// Crea el archivo de destino para una recepción P2P. Devuelve la ruta.
+/// Prepara la recepción P2P en un temporal oculto. Devuelve la carpeta de destino.
 #[tauri::command]
 pub fn begin_receive(app: AppHandle, state: State<'_, Transfers>, id: String, file_name: String) -> Result<String, String> {
     let dir = downloads_dir(&app)?;
-    let (file, path) = create_unique(&dir, &file_name)?;
-    let shown = path.to_string_lossy().to_string();
-    state.receives.lock().unwrap().insert(id, Receive { file, path });
-    Ok(shown)
+    let (file, tmp) = create_temp(&dir)?;
+    state.receives.lock().unwrap().insert(id, Receive { file, tmp, name: file_name });
+    Ok(dir.to_string_lossy().to_string())
 }
 
 /// Agrega un chunk (cuerpo binario crudo, cabecera `x-receive-id`).
@@ -302,12 +392,20 @@ pub fn append_receive(request: Request<'_>, state: State<'_, Transfers>) -> Resu
     rec.file.write_all(data).map_err(|e| format!("No se pudo escribir: {e}"))
 }
 
-/// Cierra el archivo y devuelve su ruta.
+/// Cierra el archivo, lo publica con su nombre (sin sobrescribir) y devuelve su ruta.
 #[tauri::command]
 pub fn finish_receive(state: State<'_, Transfers>, id: String) -> Result<String, String> {
     let rec = state.receives.lock().unwrap().remove(&id).ok_or("recepción desconocida")?;
-    rec.file.sync_all().map_err(|e| e.to_string())?;
-    Ok(rec.path.to_string_lossy().to_string())
+    let dir = rec.tmp.parent().map(Path::to_path_buf).ok_or("ruta inválida")?;
+    let synced = rec.file.sync_all().map_err(|e| e.to_string());
+    drop(rec.file); // Windows no permite enlazar/renombrar un archivo abierto
+    match synced.and_then(|()| publish(&rec.tmp, &dir, &rec.name)) {
+        Ok(path) => Ok(path.to_string_lossy().to_string()),
+        Err(e) => {
+            let _ = std::fs::remove_file(&rec.tmp);
+            Err(e)
+        }
+    }
 }
 
 /// Descarta una recepción incompleta y borra el archivo.
@@ -315,13 +413,54 @@ pub fn finish_receive(state: State<'_, Transfers>, id: String) -> Result<String,
 pub fn abort_receive(state: State<'_, Transfers>, id: String) {
     if let Some(rec) = state.receives.lock().unwrap().remove(&id) {
         drop(rec.file);
-        let _ = std::fs::remove_file(&rec.path);
+        let _ = std::fs::remove_file(&rec.tmp);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_file_name;
+    use super::{create_temp, migrate_legacy_uploads, publish, sanitize_file_name, TEMP_PREFIX};
+    use std::io::Write;
+
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("srvfiles-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn writes_go_to_a_hidden_temp_and_publish_never_overwrites() {
+        let dir = temp_dir("publish");
+        std::fs::write(dir.join("foto.jpg"), b"vieja").unwrap();
+
+        let (mut file, tmp) = create_temp(&dir).unwrap();
+        assert!(tmp.file_name().unwrap().to_string_lossy().starts_with(TEMP_PREFIX));
+        file.write_all(b"nueva").unwrap();
+        drop(file);
+
+        let path = publish(&tmp, &dir, "foto.jpg").unwrap();
+        assert_eq!(path.file_name().unwrap(), "foto (1).jpg");
+        assert_eq!(std::fs::read(&path).unwrap(), b"nueva");
+        assert_eq!(std::fs::read(dir.join("foto.jpg")).unwrap(), b"vieja");
+        assert!(!tmp.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn legacy_uploads_are_moved_to_the_shared_folder() {
+        let from = temp_dir("legacy-from");
+        let to = temp_dir("legacy-to");
+        std::fs::write(from.join("a.txt"), b"a").unwrap();
+        std::fs::write(to.join("a.txt"), b"ya estaba").unwrap();
+
+        migrate_legacy_uploads(&from, &to);
+
+        assert_eq!(std::fs::read(to.join("a (1).txt")).unwrap(), b"a");
+        assert_eq!(std::fs::read(to.join("a.txt")).unwrap(), b"ya estaba");
+        assert!(!from.exists());
+        let _ = std::fs::remove_dir_all(&to);
+    }
 
     #[test]
     fn sanitize_strips_paths_and_reserved_chars() {

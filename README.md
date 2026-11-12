@@ -38,9 +38,9 @@ Levantás SrvFiles en una computadora — vía web o como app de escritorio (Tau
 
 | Herramienta | Versión |
 |-------------|---------|
-| Go | 1.22+ |
-| Node.js | 18+ |
-| npm | 9+ |
+| Go | 1.26+ |
+| Node.js | 22.12+ (CI usa 24) |
+| npm | 10+ |
 | Rust + cargo | stable (solo Tauri) |
 
 ```bash
@@ -58,7 +58,7 @@ npm run dev
 ```
 
 Backend Go en `http://localhost:3001`, frontend en `http://localhost:5173` con hot reload.
-Otros dispositivos acceden por `https://<tu-ip>:3002` (la primera vez hay que aceptar el certificado autofirmado en el navegador).
+Otros dispositivos acceden por `https://<tu-ip>:3002` (la primera vez hay que aceptar el certificado autofirmado en el navegador). Si alguien abre `http://<tu-ip>:3001` o escribe `<tu-ip>:3002` sin `https://`, el servidor lo redirige a la dirección HTTPS.
 
 ### Modo desktop / Tauri (desarrollo)
 
@@ -129,7 +129,7 @@ El archivo de referencia completo está en `backend/internal/config/config.go`.
 | `MAX_FILE_SIZE_MB` | `10240` | Límite de tamaño por archivo (MB) |
 | `MAX_UPLOAD_COUNT` | `50` | Máximo de archivos por request de subida |
 | `PREVIEW_MAX_FILE_SIZE_MB` | `1024` | Límite para previsualización (MB) |
-| `UPLOADS_DIR` | `<cwd>/uploads` | Carpeta de almacenamiento |
+| `UPLOADS_DIR` | `<cwd>/uploads` | Carpeta de almacenamiento (la app de escritorio usa `Descargas/SrvFiles`) |
 | `HTTPS_PORT` | `PORT+1` | Puerto HTTPS para navegadores externos |
 | `FRONTEND_PORT` | `5173` | Puerto de Vite en desarrollo (usado en config CORS) |
 | `CERTS_DIR` | `<cwd>/certs` | Carpeta del certificado TLS (auto-generado) |

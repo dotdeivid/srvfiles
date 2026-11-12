@@ -5,4 +5,4 @@
 
 ---
 
-`isTauriApp()`, `getBackendPort()`, `onBackendRestarted(cb)`, `onNativeProgress(evento, id, cb)`, `pathInfo`, `nativeUpload`, `nativeDownload`, `cancelNativeTransfer`, `beginReceive`, `appendReceive` (cuerpo binario crudo), `finishReceive`, `abortReceive`. Los comandos están en `src-tauri/src/files.rs`; el webview no tiene permisos de sistema de archivos.
+`isTauriApp()`, `getBackendPort()`, `onBackendRestarted(cb)`, `onNativeProgress(evento, id, cb)`, `pathInfo`, `nativeUpload`, `nativeDownload`, `showInFolder`, `cancelNativeTransfer`, `beginReceive`, `appendReceive` (cuerpo binario crudo), `finishReceive`, `abortReceive`. Los comandos están en `src-tauri/src/files.rs`; el webview no tiene permisos de sistema de archivos.

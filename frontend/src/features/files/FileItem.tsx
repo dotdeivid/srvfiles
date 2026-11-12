@@ -4,12 +4,12 @@ import { toast } from 'sonner';
 import type { FileInfo } from './files.api';
 import { formatBytes } from '../../shared/utils/format';
 import { getFileIcon } from '../../shared/utils/fileIcons';
-import { isTauriApp, nativeDownload, onNativeProgress, cancelNativeTransfer } from '../../lib/tauri';
+import { isTauriApp, nativeDownload, onNativeProgress, cancelNativeTransfer, showInFolder } from '../../lib/tauri';
 import { errorMessage } from '../../lib/http';
 import { log } from '../../lib/logger';
 import { canPreview } from '../../shared/utils/fileTypeHelper';
 import { PreviewModal } from '../preview/PreviewModal';
-import { Download, Trash2, Eye } from 'lucide-react';
+import { Download, Trash2, Eye, FolderOpen } from 'lucide-react';
 
 interface FileItemProps {
   file: FileInfo;
@@ -21,6 +21,8 @@ interface FileItemProps {
   canDelete: boolean;
   /** Max file size in MB allowed for preview. Comes from server config. */
   previewMaxMb?: number;
+  /** El archivo está en este equipo (app de escritorio, servidor propio). */
+  isLocal?: boolean;
 }
 
 /**
@@ -71,7 +73,7 @@ async function downloadInBrowser(getLinkedUrl: FileItemProps['getLinkedUrl'], fi
 }
 
 export function FileItem({
-  file, onRequestDelete, viewMode, getLinkedUrl, getPlainDownloadUrl, token, canDelete, previewMaxMb = 1024,
+  file, onRequestDelete, viewMode, getLinkedUrl, getPlainDownloadUrl, token, canDelete, previewMaxMb = 1024, isLocal = false,
 }: FileItemProps) {
   const [previewing, setPreviewing] = useState(false);
 
@@ -94,14 +96,26 @@ export function FileItem({
           <Eye size={16} />
         </button>
       )}
-      <button
-        onClick={() => void download()}
-        className="btn-icon btn-icon--download"
-        title="Descargar"
-        aria-label={`Descargar ${file.name}`}
-      >
-        <Download size={16} />
-      </button>
+      {isLocal ? (
+        // Ya está en Descargas/SrvFiles: descargarlo crearía una copia.
+        <button
+          onClick={() => void showInFolder(file.name).catch((err) => toast.error(String(err)))}
+          className="btn-icon btn-icon--download"
+          title="Mostrar en la carpeta"
+          aria-label={`Mostrar ${file.name} en la carpeta`}
+        >
+          <FolderOpen size={16} />
+        </button>
+      ) : (
+        <button
+          onClick={() => void download()}
+          className="btn-icon btn-icon--download"
+          title="Descargar"
+          aria-label={`Descargar ${file.name}`}
+        >
+          <Download size={16} />
+        </button>
+      )}
       {canDelete && (
         <button onClick={() => onRequestDelete(file.name)} className="btn-icon btn-icon--delete" title="Eliminar" aria-label={`Eliminar ${file.name}`}>
           <Trash2 size={16} />

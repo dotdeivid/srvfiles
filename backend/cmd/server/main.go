@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -25,6 +26,7 @@ import (
 	"srvfiles/internal/logger"
 	"srvfiles/internal/network"
 	"srvfiles/internal/storage"
+	"srvfiles/internal/tlsmux"
 	"srvfiles/internal/transfer"
 	"srvfiles/internal/webguard"
 )
@@ -54,10 +56,21 @@ func main() {
 		fmt.Fprintf(os.Stderr, "SRVFILES_ERROR port_in_use %d\n", config.Port)
 		os.Exit(1)
 	}
-	httpServer := newHTTPServer(r)
 
 	// ─── HTTPS server (LAN — external browsers) ──────────────────────────
 	httpsServer := startHTTPS(r, lanIp)
+
+	// Con HTTPS activo, los navegadores de otros equipos que abren la web por
+	// HTTP pasan a HTTPS (sin contexto seguro no pueden transferir archivos).
+	var httpHandler = r
+	if httpsServer != nil {
+		httpHandler = webguard.RedirectToHTTPS(config.HttpsPort)(r)
+	}
+	httpServer := newHTTPServer(httpHandler)
+
+	// Archivos que aparecen o desaparecen en la carpeta sin pasar por la API
+	// (recibidos por la app de escritorio, copiados a mano): avisar a los clientes.
+	go files.WatchUploadsDir(2 * time.Second)
 
 	// ─── Startup banner ───────────────────────────────────────────────────
 	fmt.Printf("\n🗂️  %s running!\n", config.AppName)
@@ -166,6 +179,9 @@ func newHTTPServer(handler http.Handler) *http.Server {
 // startHTTPS creates the TLS certificate and starts the HTTPS server in a goroutine.
 // Returns the server so main can shut it down gracefully.
 // If cert generation fails, logs the error and returns nil (HTTP-only mode).
+//
+// El mismo puerto acepta HTTP plano y lo redirige a https:// (quien escribe
+// la IP sin "https://" en el navegador ya no ve un error de conexión).
 func startHTTPS(handler http.Handler, lanIp string) *http.Server {
 	tlsCert, err := cert.GetOrCreateCert(config.CertsDir, network.LanIPs())
 	if err != nil {
@@ -186,12 +202,21 @@ func startHTTPS(handler http.Handler, lanIp string) *http.Server {
 		MinVersion:   tls.VersionTLS12,
 		NextProtos:   []string{"h2", "http/1.1"},
 	}
-	tlsListener := tls.NewListener(ln, tlsConfig)
+	tlsListener, plainListener := tlsmux.Split(ln, tlsConfig)
 
 	server := newHTTPServer(handler)
 	go func() {
 		if err := server.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
 			logger.Log.Error("main.go", "HTTPS server error", "error", err)
+		}
+	}()
+
+	redirect := newHTTPServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://"+r.Host+r.URL.RequestURI(), http.StatusFound)
+	}))
+	go func() {
+		if err := redirect.Serve(plainListener); err != nil && err != http.ErrServerClosed && !errors.Is(err, net.ErrClosed) {
+			logger.Log.Error("main.go", "HTTP→HTTPS redirect error", "error", err)
 		}
 	}()
 

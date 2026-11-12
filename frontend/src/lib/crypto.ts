@@ -14,7 +14,7 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function fromBase64(b64: string): Uint8Array {
+function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
@@ -45,7 +45,7 @@ export class SessionCipher {
     return new TextDecoder().decode(plaintext);
   }
 
-  async encryptBinary(payload: Uint8Array): Promise<Uint8Array> {
+  async encryptBinary(payload: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, this.key, payload);
     const result = new Uint8Array(12 + ciphertext.byteLength);
@@ -54,7 +54,7 @@ export class SessionCipher {
     return result;
   }
 
-  async decryptBinary(data: Uint8Array): Promise<Uint8Array> {
+  async decryptBinary(data: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
     const iv = data.subarray(0, 12);
     const ciphertext = data.subarray(12);
     const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, this.key, ciphertext);

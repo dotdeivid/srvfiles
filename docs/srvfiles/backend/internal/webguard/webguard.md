@@ -15,3 +15,4 @@ El servidor no está detrás de un proxy: la IP del cliente es siempre la del so
 | `AllowedOrigin(r)` | Sin `Origin` (apps nativas, curl); mismo origen que la página (`Origin` host == `Host`); app de escritorio (`tauri://localhost`, `http(s)://tauri.localhost`); Vite en `localhost:5173`. Lo usa también el WebSocket (`CheckOrigin`). |
 | `CORS` | Responde preflights y pone las cabeceras CORS solo para orígenes permitidos; los demás reciben 403, así una web cualquiera abierta en el navegador no puede usar la API local. |
 | `SecurityHeaders` | `X-Content-Type-Options: nosniff` y `Referrer-Policy: no-referrer` en todas las respuestas. |
+| `RedirectToHTTPS(httpsPort)` | Solo en el servidor HTTP: redirige (302) a `https://<host>:<httpsPort>` las páginas que un navegador de otro equipo abre por HTTP, porque sin contexto seguro no hay WebCrypto ni transferencias. No toca `/api/*` ni `/ws` (apps y descubrimiento), ni `localhost`, ni métodos distintos de GET/HEAD. |
