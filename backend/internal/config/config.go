@@ -25,8 +25,18 @@ var PreviewMaxSizeMB = envInt("PREVIEW_MAX_FILE_SIZE_MB", 1024)
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
-var UploadsDir = envStr("UPLOADS_DIR", filepath.Join(".", "uploads"))
+var UploadsDir = envStr("UPLOADS_DIR", defaultUploadsDir())
 var CertsDir = envStr("CERTS_DIR", filepath.Join(".", "certs"))
+
+// defaultUploadsDir es <Descargas>/SrvFiles: la misma carpeta que comparte la
+// app de escritorio. Si no se encuentra la carpeta de descargas (contenedor,
+// servidor sin usuario), ./uploads.
+func defaultUploadsDir() string {
+	if dir := downloadsDir(); dir != "" {
+		return filepath.Join(dir, "SrvFiles")
+	}
+	return filepath.Join(".", "uploads")
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

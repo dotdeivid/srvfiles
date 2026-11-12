@@ -76,6 +76,7 @@ func main() {
 	fmt.Printf("\n🗂️  %s running!\n", config.AppName)
 	fmt.Printf("   Local:          http://localhost:%d\n", config.Port)
 	fmt.Printf("   Network (web):  https://%s:%d\n", lanIp, config.HttpsPort)
+	fmt.Printf("   Shared folder:  %s\n", config.UploadsDir)
 	fmt.Printf("   Max file size:  %d MB\n", config.MaxFileSizeMB)
 	fmt.Printf("   PIN: %s\n", pin)
 	fmt.Println()
