@@ -1,269 +1,204 @@
 package transfer
 
 import (
-	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"net"
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gorilla/websocket"
 
 	"srvfiles/internal/auth"
 	"srvfiles/internal/logger"
 	"srvfiles/internal/network"
+	"srvfiles/internal/webguard"
+)
+
+// ─── Limits ───────────────────────────────────────────────────────────────────
+
+const (
+	chunkSize       = 256 * 1024
+	transferIDLen   = 36
+	maxMessageBytes = chunkSize + transferIDLen + 12 + 16 + 4096 // chunk + header + IV/tag + margen
+	maxClients      = 100
+	maxAppNameLen   = 64
 )
 
 // ─── Upgrader ─────────────────────────────────────────────────────────────────
 
 var upgrader = websocket.Upgrader{
-	// Allow all origins — same as cors({ origin: '*' }) in the Node.js server
-	CheckOrigin:     func(r *http.Request) bool { return true },
-	ReadBufferSize:  256 * 1024, // 256 KB — matches the P2P chunk size
-	WriteBufferSize: 256 * 1024,
+	// Mismos orígenes que la API: la propia página, Tauri, Vite en localhost y
+	// clientes nativos (sin Origin).
+	CheckOrigin:     webguard.AllowedOrigin,
+	ReadBufferSize:  64 * 1024,
+	WriteBufferSize: 64 * 1024,
 }
 
 // ─── HandleConnection ─────────────────────────────────────────────────────────
 
 // HandleConnection is the entry point for every WebSocket connection on /ws.
-// Each call runs in its own goroutine (one per connection, managed by net/http).
-// Equivalent to handleConnection() in transfer.handler.ts.
+//
+// Protocolo: auth (obligatorio, dentro de authWait) → auth_ok → key-exchange
+// opcional → hello → señalización. El cifrado es salto a salto (cliente ↔
+// servidor): el servidor descifra cada chunk y lo vuelve a cifrar para el
+// receptor. Ver docs/protocol.md.
 func HandleConnection(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Log.Error("transfer.handler.go", "WS upgrade failed", "error", err)
+		logger.Log.Warn("transfer.handler.go", "WS upgrade failed", "error", err)
 		return
 	}
-	defer conn.Close()
 
-	clientID  := newUUID()
-	clientIP  := extractIP(r)
-	logger.Log.Debug("transfer.handler.go", "New WS connection", "clientIP", clientIP)
+	clientID := auth.NewID()
+	clientIP := extractIP(r)
+	client := newClient(conn, clientID, clientIP)
+	defer cleanup(client)
 
-	var client *Client
-	session       := &WsSession{}
+	conn.SetReadLimit(maxMessageBytes)
+	_ = conn.SetReadDeadline(time.Now().Add(authWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(pongWait))
+	})
+
+	session := &WsSession{}
 	authenticated := false
 
 	for {
 		msgType, data, err := conn.ReadMessage()
 		if err != nil {
-			break // connection closed or network error
+			return // closed, timeout, or message over the limit
 		}
 
-		// ── Binary frame: relay 256 KB chunk to receiver ───────────────
+		// ── Binary frame: relay a chunk to the receiver ─────────────────
 		if msgType == websocket.BinaryMessage {
 			if !authenticated {
-				_ = conn.WriteControl(websocket.CloseMessage,
-					websocket.FormatCloseMessage(4401, "Unauthorized"),
-					time.Now().Add(time.Second))
-				break
+				client.closeWithCode(4401, "Unauthorized")
+				return
 			}
-
-			// Decrypt incoming binary if the sender has E2E enabled.
-			payload := data
-			if session.Cipher != nil {
-				decrypted, err := session.Cipher.DecryptBinary(data)
-				if err != nil {
-					logger.Log.Warn("transfer.handler.go", "Failed to decrypt binary frame", "error", err)
-					continue
-				}
-				payload = decrypted
-			}
-
-			if len(payload) < 36 {
-				continue
-			}
-			// Frame layout: 36 bytes (ASCII transferId, space-padded) + chunk data.
-			transferID := strings.TrimRight(string(payload[:36]), " \x00")
-			t := Default.GetTransfer(transferID)
-			if t == nil {
-				logger.Log.Warn("transfer.handler.go", "Binary chunk for unknown transferId",
-					"transferId", transferID)
-				continue
-			}
-			receiver := Default.Get(t.ReceiverClientID)
-			if receiver == nil {
-				continue
-			}
-			// Re-encrypt for the receiver if they have E2E enabled.
-			if receiver.Cipher != nil {
-				encrypted, err := receiver.Cipher.EncryptBinary(payload)
-				if err != nil {
-					logger.Log.Warn("transfer.handler.go", "Failed to encrypt binary frame for receiver", "error", err)
-					continue
-				}
-				receiver.SendBinary(encrypted)
-			} else {
-				receiver.SendBinary(payload)
-			}
+			relayBinary(client, session, data)
 			continue
 		}
 
 		// ── Text frame: JSON signaling ─────────────────────────────────
 		var msg map[string]any
 		if err := json.Unmarshal(data, &msg); err != nil {
-			logger.Log.Error("transfer.handler.go", "Mensaje WS no es JSON válido", "error", err)
+			logger.Log.Warn("transfer.handler.go", "WS message is not valid JSON", "clientId", clientID)
 			continue
 		}
 
-		// ── Decrypt encrypted envelope ─────────────────────────────────
-		if authenticated && session.Cipher != nil && strVal(msg, "type") == "encrypted" {
-			plaintext, err := session.Cipher.DecryptJSON(strVal(msg, "iv"), strVal(msg, "data"))
+		// Con clave establecida solo se aceptan sobres cifrados.
+		if cipher := client.Cipher(); cipher != nil {
+			if strVal(msg, "type") != "encrypted" {
+				logger.Log.Warn("transfer.handler.go", "Plaintext message rejected on encrypted session",
+					"type", strVal(msg, "type"), "clientId", clientID)
+				continue
+			}
+			plaintext, err := cipher.DecryptJSON(strVal(msg, "iv"), strVal(msg, "data"))
 			if err != nil {
 				logger.Log.Warn("transfer.handler.go", "Failed to decrypt JSON frame", "error", err)
 				continue
 			}
+			msg = nil
 			if err := json.Unmarshal([]byte(plaintext), &msg); err != nil {
-				logger.Log.Warn("transfer.handler.go", "Decrypted payload is not valid JSON", "error", err)
 				continue
 			}
 		}
+
+		msgKind := strVal(msg, "type")
 
 		// ── First message must be auth ─────────────────────────────────
 		if !authenticated {
-			if strVal(msg, "type") != "auth" {
-				logger.Log.Warn("transfer.handler.go", "First WS message was not auth",
-					"type", strVal(msg, "type"), "clientIP", clientIP)
-				_ = conn.WriteControl(websocket.CloseMessage,
-					websocket.FormatCloseMessage(4401, "Unauthorized"),
-					time.Now().Add(time.Second))
-				break
-			}
-			if !auth.ValidateToken(strVal(msg, "token")) {
-				logger.Log.Warn("transfer.handler.go", "WS auth failed — invalid token",
-					"clientIP", clientIP)
-				_ = conn.WriteControl(websocket.CloseMessage,
-					websocket.FormatCloseMessage(4401, "Token inválido"),
-					time.Now().Add(time.Second))
-				break
+			if msgKind != "auth" || !auth.ValidateToken(strVal(msg, "token")) {
+				logger.Log.Warn("transfer.handler.go", "WS auth failed", "clientIP", clientIP)
+				client.closeWithCode(4401, "Unauthorized")
+				return
 			}
 			authenticated = true
-			logger.Log.Debug("transfer.handler.go", "WS client authenticated", "clientIP", clientIP)
-			writeRawJSON(conn, map[string]string{"type": "auth_ok"})
+			_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+			client.SendRaw(map[string]string{"type": "auth_ok"})
 			continue
 		}
 
-		// ── Key exchange ──────────────────────────────────────────────
-		if strVal(msg, "type") == "key-exchange" {
+		switch msgKind {
+		case "key-exchange":
+			if client.Cipher() != nil {
+				continue // ya negociado
+			}
 			serverPubKey, err := session.HandleKeyExchange(strVal(msg, "publicKey"))
 			if err != nil {
 				logger.Log.Warn("transfer.handler.go", "Key exchange failed", "error", err)
-				writeRawJSON(conn, map[string]any{"type": "key-exchange-error", "reason": err.Error()})
+				client.SendRaw(map[string]any{"type": "key-exchange-error", "reason": "invalid key"})
 				continue
 			}
-			// Attach cipher to client if already registered; otherwise it will be
-			// set on the next hello (clients always do key-exchange before hello).
-			if client != nil {
-				client.Cipher = session.Cipher
-			}
-			writeRawJSON(conn, map[string]any{"type": "key-exchange", "publicKey": serverPubKey})
-			logger.Log.Debug("transfer.handler.go", "Key exchange complete", "clientIP", clientIP)
-			continue
-		}
-
-		// ── Signaling protocol ────────────────────────────────────────
-		switch strVal(msg, "type") {
+			// La respuesta sale en claro (encolada antes de activar la clave).
+			client.SendRaw(map[string]any{"type": "key-exchange", "publicKey": serverPubKey})
+			client.setCipher(session.Cipher)
 
 		case "hello":
-			appName    := strVal(msg, "appName")
-			if appName == "" {
-				appName = "Unknown"
-			}
-			deviceType := "desktop"
-			if strVal(msg, "deviceType") == "mobile" {
-				deviceType = "mobile"
-			}
-			client = &Client{
-				WS:         conn,
-				ClientID:   clientID,
-				AppName:    appName,
-				IP:         clientIP,
-				DeviceType: deviceType,
-				IsServer:   boolVal(msg, "isServer"),
-				Cipher:     session.Cipher, // nil if key-exchange hasn't happened yet
-			}
-			Default.Add(clientID, client)
-			logger.Log.Info("transfer.handler.go", "Client registered",
-				"clientId", clientID, "appName", appName,
-				"ip", clientIP, "deviceType", deviceType, "isServer", client.IsServer)
-			client.SendJSON(map[string]any{"type": "welcome", "clientId": clientID})
-			Default.BroadcastClients()
+			handleHello(client, msg)
 
 		case "set-receiving":
-			if client == nil {
+			if !isRegistered(client) {
 				continue
 			}
-			client.Receiving = boolVal(msg, "receiving")
+			client.mu.Lock()
+			client.receiving = boolVal(msg, "receiving")
+			client.mu.Unlock()
 			Default.BroadcastClients()
 
 		case "rename":
-			if client == nil {
+			if !isRegistered(client) {
 				continue
 			}
-			if newName := strings.TrimSpace(strVal(msg, "newName")); newName != "" {
-				client.AppName = newName
+			if newName := cleanName(strVal(msg, "newName")); newName != "" {
+				client.mu.Lock()
+				client.appName = newName
+				client.mu.Unlock()
 				Default.BroadcastClients()
 			}
 
 		case "send-request":
-			if client == nil {
-				continue
+			if isRegistered(client) {
+				handleSendRequest(client, msg)
 			}
-			to         := strVal(msg, "to")
-			transferID := strVal(msg, "transferId")
-			fileName   := strVal(msg, "fileName")
-			fileSize   := int64Val(msg, "fileSize")
-			mimeType   := strVal(msg, "mimeType")
 
-			receiver := Default.Get(to)
-			if receiver == nil {
-				logger.Log.Warn("transfer.handler.go", "Transfer target offline",
-					"transferId", transferID, "to", to, "fileName", fileName)
-				client.SendJSON(map[string]any{
-					"type": "send-reject", "transferId": transferID, "reason": "offline",
-				})
+		case "send-key":
+			// Clave pública E2E del receptor → emisor. El servidor no puede
+			// descifrar el contenido: solo reenvía.
+			if !isRegistered(client) {
 				continue
 			}
-			logger.Log.Info("transfer.handler.go", "Transfer request relayed",
-				"transferId", transferID, "from", client.AppName,
-				"to", receiver.AppName, "fileName", fileName, "fileSize", fileSize)
-			Default.AddTransfer(transferID, &TransferSession{
-				TransferID:       transferID,
-				SenderClientID:   clientID,
-				ReceiverClientID: to,
-				FileName:         fileName,
-				FileSize:         fileSize,
-				MimeType:         mimeType,
-			})
-			receiver.SendJSON(map[string]any{
-				"type":       "send-request",
-				"from":       clientID,
-				"fromName":   client.AppName,
-				"fileName":   fileName,
-				"fileSize":   fileSize,
-				"mimeType":   mimeType,
-				"transferId": transferID,
-			})
+			transferID := strVal(msg, "transferId")
+			publicKey := strVal(msg, "publicKey")
+			if !validPublicKey(publicKey) {
+				continue
+			}
+			t := Default.MarkKeySent(transferID, clientID)
+			if t == nil {
+				continue
+			}
+			if sender := Default.Get(t.SenderClientID); sender != nil {
+				sender.SendJSON(map[string]any{"type": "send-key", "transferId": transferID, "publicKey": publicKey})
+			}
 
 		case "send-accept":
-			if client == nil {
+			if !isRegistered(client) {
 				continue
 			}
 			transferID := strVal(msg, "transferId")
-			t := Default.GetTransfer(transferID)
-			if t == nil || t.ReceiverClientID != clientID {
+			t := Default.AcceptTransfer(transferID, clientID)
+			if t == nil {
 				continue
 			}
-			logger.Log.Info("transfer.handler.go", "Transfer accepted",
-				"transferId", transferID, "receiver", client.AppName)
+			logger.Log.Info("transfer.handler.go", "Transfer accepted", "transferId", transferID)
 			if sender := Default.Get(t.SenderClientID); sender != nil {
 				sender.SendJSON(map[string]any{"type": "send-accept", "transferId": transferID})
 			}
 
 		case "send-reject":
-			if client == nil {
+			if !isRegistered(client) {
 				continue
 			}
 			transferID := strVal(msg, "transferId")
@@ -271,24 +206,25 @@ func HandleConnection(w http.ResponseWriter, r *http.Request) {
 			if t == nil || t.ReceiverClientID != clientID {
 				continue
 			}
-			logger.Log.Info("transfer.handler.go", "Transfer rejected",
-				"transferId", transferID, "receiver", client.AppName)
-			if sender := Default.Get(t.SenderClientID); sender != nil {
-				sender.SendJSON(map[string]any{"type": "send-reject", "transferId": transferID})
-			}
 			Default.RemoveTransfer(transferID)
+			reply := map[string]any{"type": "send-reject", "transferId": transferID}
+			if reason := strVal(msg, "reason"); reason != "" {
+				reply["reason"] = reason
+			}
+			if sender := Default.Get(t.SenderClientID); sender != nil {
+				sender.SendJSON(reply)
+			}
 
 		case "send-cancel":
-			if client == nil {
+			if !isRegistered(client) {
 				continue
 			}
 			transferID := strVal(msg, "transferId")
 			t := Default.GetTransfer(transferID)
-			if t == nil {
+			if t == nil || (t.SenderClientID != clientID && t.ReceiverClientID != clientID) {
 				continue
 			}
-			logger.Log.Info("transfer.handler.go", "Transfer cancelled",
-				"transferId", transferID, "by", client.AppName)
+			Default.RemoveTransfer(transferID)
 			otherID := t.ReceiverClientID
 			if t.SenderClientID != clientID {
 				otherID = t.SenderClientID
@@ -296,10 +232,9 @@ func HandleConnection(w http.ResponseWriter, r *http.Request) {
 			if other := Default.Get(otherID); other != nil {
 				other.SendJSON(map[string]any{"type": "send-cancel", "transferId": transferID})
 			}
-			Default.RemoveTransfer(transferID)
 
 		case "send-complete":
-			if client == nil {
+			if !isRegistered(client) {
 				continue
 			}
 			transferID := strVal(msg, "transferId")
@@ -307,44 +242,210 @@ func HandleConnection(w http.ResponseWriter, r *http.Request) {
 			if t == nil || t.SenderClientID != clientID {
 				continue
 			}
-			logger.Log.Info("transfer.handler.go", "Transfer complete",
-				"transferId", transferID, "fileName", t.FileName, "fileSize", t.FileSize)
-			if receiver := Default.Get(t.ReceiverClientID); receiver != nil {
-				receiver.SendJSON(map[string]any{"type": "send-complete", "transferId": transferID})
-			}
 			Default.RemoveTransfer(transferID)
+			logger.Log.Info("transfer.handler.go", "Transfer complete",
+				"transferId", transferID, "fileSize", t.FileSize)
+			if receiver := Default.Get(t.ReceiverClientID); receiver != nil {
+				// e2e.final: marcador cifrado de extremo a extremo (chunks, tamaño, nombre).
+				receiver.SendJSON(map[string]any{
+					"type":       "send-complete",
+					"transferId": transferID,
+					"e2e":        map[string]any{"final": e2eField(msg, "final")},
+				})
+			}
 		}
 	}
+}
 
-	// ── Cleanup ───────────────────────────────────────────────────────
-	if client != nil {
-		logger.Log.Info("transfer.handler.go", "Client disconnected",
-			"clientId", clientID, "appName", client.AppName)
-		Default.Remove(clientID)
-		Default.BroadcastClients()
+// ─── Handlers ─────────────────────────────────────────────────────────────────
+
+func handleHello(client *Client, msg map[string]any) {
+	client.mu.Lock()
+	already := client.registered
+	client.mu.Unlock()
+	if !already && Default.Count() >= maxClients {
+		client.closeWithCode(1013, "Demasiados clientes")
+		return
+	}
+
+	appName := cleanName(strVal(msg, "appName"))
+	if appName == "" {
+		appName = "Dispositivo"
+	}
+	deviceType := "desktop"
+	if strVal(msg, "deviceType") == "mobile" {
+		deviceType = "mobile"
+	}
+	serverPort := int(int64Val(msg, "serverPort"))
+	if serverPort < 0 || serverPort > 65535 {
+		serverPort = 0
+	}
+
+	client.mu.Lock()
+	client.e2e = int64Val(msg, "e2e") >= 1
+	client.registered = true
+	client.appName = appName
+	client.deviceType = deviceType
+	client.isServer = boolVal(msg, "isServer")
+	client.serverPort = serverPort
+	client.mu.Unlock()
+
+	Default.Add(client.ClientID, client)
+	logger.Log.Info("transfer.handler.go", "Client registered",
+		"clientId", client.ClientID, "appName", appName, "ip", client.IP, "deviceType", deviceType)
+	client.SendJSON(map[string]any{"type": "welcome", "clientId": client.ClientID})
+	Default.BroadcastClients()
+}
+
+func handleSendRequest(client *Client, msg map[string]any) {
+	to := strVal(msg, "to")
+	transferID := strVal(msg, "transferId")
+	fileName := strVal(msg, "fileName")
+	fileSize := int64Val(msg, "fileSize")
+	mimeType := strVal(msg, "mimeType")
+
+	reject := func(reason string) {
+		client.SendJSON(map[string]any{"type": "send-reject", "transferId": transferID, "reason": reason})
+	}
+	if transferID == "" || len(transferID) > transferIDLen || fileSize < 0 {
+		reject("invalid")
+		return
+	}
+	// Cifrado de extremo a extremo obligatorio: sin la clave del emisor no se reenvía.
+	senderKey := e2eField(msg, "publicKey")
+	if !validPublicKey(senderKey) {
+		reject("e2e-required")
+		return
+	}
+	receiver := Default.Get(to)
+	if receiver == nil || to == client.ClientID {
+		reject("offline")
+		return
+	}
+	receiver.mu.Lock()
+	receiverE2E := receiver.e2e
+	receiver.mu.Unlock()
+	if !receiverE2E {
+		reject("e2e-unsupported")
+		return
+	}
+	if !Default.AddTransfer(&TransferSession{
+		TransferID:       transferID,
+		SenderClientID:   client.ClientID,
+		ReceiverClientID: to,
+		FileName:         fileName,
+		FileSize:         fileSize,
+		MimeType:         mimeType,
+	}) {
+		reject("duplicate")
+		return
+	}
+	logger.Log.Info("transfer.handler.go", "Transfer request relayed",
+		"transferId", transferID, "from", client.ClientID, "to", to, "fileSize", fileSize)
+	receiver.SendJSON(map[string]any{
+		"type":       "send-request",
+		"from":       client.ClientID,
+		"fromName":   client.AppName(),
+		"fileName":   fileName,
+		"fileSize":   fileSize,
+		"mimeType":   mimeType,
+		"transferId": transferID,
+		"e2e":        map[string]any{"publicKey": senderKey},
+	})
+}
+
+// relayBinary forwards a chunk only from the session's sender, after accept.
+func relayBinary(client *Client, session *WsSession, data []byte) {
+	payload := data
+	if cipher := client.Cipher(); cipher != nil {
+		decrypted, err := cipher.DecryptBinary(data)
+		if err != nil {
+			logger.Log.Warn("transfer.handler.go", "Failed to decrypt binary frame", "error", err)
+			return
+		}
+		payload = decrypted
+	}
+	if len(payload) <= transferIDLen {
+		return
+	}
+	transferID := strings.TrimRight(string(payload[:transferIDLen]), " \x00")
+	t := Default.GetTransfer(transferID)
+	if t == nil || t.SenderClientID != client.ClientID || !t.Accepted {
+		return
+	}
+	receiver := Default.Get(t.ReceiverClientID)
+	if receiver == nil {
+		return
+	}
+	if cipher := receiver.Cipher(); cipher != nil {
+		encrypted, err := cipher.EncryptBinary(payload)
+		if err != nil {
+			logger.Log.Warn("transfer.handler.go", "Failed to encrypt binary frame for receiver", "error", err)
+			return
+		}
+		receiver.SendBinary(encrypted)
 	} else {
-		logger.Log.Debug("transfer.handler.go", "Unauthenticated WS connection closed",
-			"clientIP", clientIP)
+		receiver.SendBinary(payload)
+	}
+}
+
+// cleanup removes the client, cancels its transfers and tells the other side.
+func cleanup(client *Client) {
+	client.Close()
+	for _, t := range Default.TakeTransfersOf(client.ClientID) {
+		otherID := t.ReceiverClientID
+		if t.ReceiverClientID == client.ClientID {
+			otherID = t.SenderClientID
+		}
+		if other := Default.Get(otherID); other != nil {
+			other.SendJSON(map[string]any{"type": "send-cancel", "transferId": t.TransferID})
+		}
+	}
+	if isRegistered(client) {
+		logger.Log.Info("transfer.handler.go", "Client disconnected", "clientId", client.ClientID)
+		Default.Remove(client.ClientID)
+		Default.BroadcastClients()
 	}
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// writeRawJSON writes directly to conn without the writeMu.
-// Only safe to call before the client is registered in the registry
-// (no concurrent writers possible at that point).
-func writeRawJSON(conn *websocket.Conn, msg any) {
-	data, _ := json.Marshal(msg)
-	_ = conn.WriteMessage(websocket.TextMessage, data)
+// e2eField reads msg["e2e"][key] as a string.
+func e2eField(msg map[string]any, key string) string {
+	obj, _ := msg["e2e"].(map[string]any)
+	v, _ := obj[key].(string)
+	return v
+}
+
+// validPublicKey: base64 de una clave P-256 sin comprimir (65 bytes).
+func validPublicKey(b64 string) bool {
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	return err == nil && len(raw) == 65 && raw[0] == 0x04
+}
+
+func isRegistered(c *Client) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.registered
+}
+
+func cleanName(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > maxAppNameLen {
+		s = string(r[:maxAppNameLen])
+	}
+	return s
 }
 
 func extractIP(r *http.Request) string {
-	ip := r.RemoteAddr
-	if host, _, err := net.SplitHostPort(ip); err == nil {
-		ip = host
-	}
-	ip = strings.TrimPrefix(ip, "::ffff:")
-	if ip == "127.0.0.1" || ip == "::1" || ip == "" {
+	ip := webguard.ClientIP(r)
+	if ip == "127.0.0.1" || ip == "" {
 		return network.GetLanIp()
 	}
 	return ip
@@ -371,13 +472,4 @@ func int64Val(m map[string]any, key string) int64 {
 		return int64(v)
 	}
 	return 0
-}
-
-func newUUID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	b[6] = (b[6] & 0x0f) | 0x40 // Version 4
-	b[8] = (b[8] & 0x3f) | 0x80 // Variant 10
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }

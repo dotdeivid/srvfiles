@@ -1,14 +1,8 @@
 # PdfPreview.tsx
 
-**File:** `src/features/preview/previews/PdfPreview.tsx`
-**Purpose:** Preview component for PDF files. Embeds the file in a full-height `<iframe>` so the browser's built-in PDF viewer handles rendering.
+**Archivo:** `frontend/src/features/preview/previews/PdfPreview.tsx`
+**Rol:** Visor de PDF.
 
 ---
 
-## Exports
-
-### `PdfPreview`
-
-**Props:** `{ src: string }`
-
-Renders a single `<iframe src={src} className="preview-pdf" title="Vista previa PDF">`. No state, no effects. The browser PDF viewer provides all navigation and zoom controls.
+`<iframe>` con el visor del navegador (el PDF es el único tipo servido sin CSP `sandbox`).

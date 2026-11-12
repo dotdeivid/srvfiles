@@ -16,13 +16,11 @@ import (
 // ─── SessionCipher ────────────────────────────────────────────────────────────
 
 // SessionCipher holds the per-connection AES-256-GCM key derived via ECDH P-256 + HKDF.
-// Equivalent to the crypto helpers in transfer/session.ts.
 type SessionCipher struct {
 	key []byte // 32 bytes (AES-256)
 }
 
 // EncryptJSON encrypts a JSON string and returns base64-encoded IV and ciphertext.
-// Equivalent to encryptMessage() in session.ts.
 func (c *SessionCipher) EncryptJSON(plaintext string) (ivB64, dataB64 string, err error) {
 	block, err := aes.NewCipher(c.key)
 	if err != nil {
@@ -45,7 +43,6 @@ func (c *SessionCipher) EncryptJSON(plaintext string) (ivB64, dataB64 string, er
 }
 
 // DecryptJSON decrypts a base64-encoded IV + ciphertext pair back to a JSON string.
-// Equivalent to decryptMessage() in session.ts.
 func (c *SessionCipher) DecryptJSON(ivB64, dataB64 string) (string, error) {
 	iv, err := base64.StdEncoding.DecodeString(ivB64)
 	if err != nil {
@@ -73,7 +70,6 @@ func (c *SessionCipher) DecryptJSON(ivB64, dataB64 string) (string, error) {
 }
 
 // EncryptBinary encrypts a binary payload and returns [12B IV || ciphertext].
-// Equivalent to encryptBinary() in session.ts.
 func (c *SessionCipher) EncryptBinary(payload []byte) ([]byte, error) {
 	block, err := aes.NewCipher(c.key)
 	if err != nil {
@@ -94,7 +90,6 @@ func (c *SessionCipher) EncryptBinary(payload []byte) ([]byte, error) {
 }
 
 // DecryptBinary decrypts a [12B IV || ciphertext] binary payload.
-// Equivalent to decryptBinary() in session.ts.
 func (c *SessionCipher) DecryptBinary(data []byte) ([]byte, error) {
 	block, err := aes.NewCipher(c.key)
 	if err != nil {
@@ -127,8 +122,6 @@ type WsSession struct {
 //  3. Derives a 32-byte AES-256 key via HKDF-SHA-256 (info = "srvfiles-ws-v1").
 //  4. Stores the derived cipher in s.Cipher.
 //  5. Returns the server's public key as base64, to be sent back to the client.
-//
-// Equivalent to handleKeyExchange() in transfer/session.ts.
 func (s *WsSession) HandleKeyExchange(clientPubKeyB64 string) (string, error) {
 	clientPubBytes, err := base64.StdEncoding.DecodeString(clientPubKeyB64)
 	if err != nil {

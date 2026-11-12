@@ -1,16 +1,13 @@
 {
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Ventana principal. Sin acceso al sistema de archivos desde el webview: subir, descargar y recibir archivos se hace con comandos de la app (src/files.rs), que solo escriben en Descargas/SrvFiles.",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
-    "dialog:allow-open",
-    "fs:allow-read-file",
-    "fs:allow-write-file",
-    "fs:allow-mkdir",
-    {
-      "identifier": "fs:scope",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$DOWNLOAD/**" }, { "path": "**" }]
-    }
+    "log:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

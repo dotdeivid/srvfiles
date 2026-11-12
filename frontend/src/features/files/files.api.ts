@@ -1,38 +1,26 @@
-import axios from 'axios';
-import { getToken, clearToken } from '../auth/auth.service';
-import { log } from '../../lib/logger';
+import { apiFetch, uploadWithProgress } from '../../lib/http';
+import { DEFAULT_BACKEND_PORT } from '../../shared/utils/serverUrl';
 
 // ─── Base API URL detection ────────────────────────────────────────
 
 /**
- * Resolves the base URL of the backend API at runtime.
+ * Resolves the base URL of the backend API in a browser.
  *
- * Priority order:
- * 1. `VITE_API_URL` environment variable (explicit override).
- * 2. `http://localhost:3001` when the hostname is `tauri.localhost`
- *    (Tauri 2 webview on macOS/Linux uses this pseudo-hostname).
- * 3. Current `window.location` protocol + hostname + `VITE_BACKEND_PORT` (default `3001`).
+ * 1. `VITE_API_URL` (explicit override).
+ * 2. Dev server (Vite): same host, backend on `VITE_BACKEND_PORT` (default 3001).
+ * 3. Production: the frontend is served by the backend itself, so the API is
+ *    the current origin (HTTP or HTTPS, whatever port it runs on).
  *
- * @returns The backend base URL without a trailing slash.
+ * In Tauri the port comes from the app (see useMode / getBackendPort).
  */
 export function getApiUrl(): string {
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl) return envUrl;
-
-  // Tauri 2 on macOS/Linux serves the WebView from tauri.localhost (no real port).
-  if (typeof window !== 'undefined' && window.location.hostname === 'tauri.localhost') {
-    return 'http://localhost:3001';
+  if (import.meta.env.DEV) {
+    const port = import.meta.env.VITE_BACKEND_PORT || String(DEFAULT_BACKEND_PORT);
+    return `${window.location.protocol}//${window.location.hostname}:${port}`;
   }
-
-  // Auto-detect: use current hostname with backend port (web mode + LAN access).
-  // When served over HTTPS the frontend and backend share the same port (e.g. :3002),
-  // so we reuse window.location.port. Over HTTP (Tauri dev, plain browser dev)
-  // the Vite dev server and the backend run on different ports, so we fall back to
-  // VITE_BACKEND_PORT (default 3001) to avoid hitting the Vite server instead of the API.
-  const port = window.location.protocol === 'https:'
-    ? (window.location.port || '443')
-    : (import.meta.env.VITE_BACKEND_PORT || '3001');
-  return `${window.location.protocol}//${window.location.hostname}:${port}`;
+  return window.location.origin;
 }
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -57,6 +45,17 @@ export interface UploadedFile {
   downloadUrl: string;
 }
 
+export interface FailedFile {
+  name: string;
+  reason: string;
+}
+
+export interface UploadResult {
+  message?: string;
+  files?: UploadedFile[];
+  failed?: FailedFile[];
+}
+
 export interface AppConfig {
   appName: string;
   lanIp: string;
@@ -64,125 +63,59 @@ export interface AppConfig {
   httpsPort: number;
   frontendPort: number;
   maxFileSizeMb: number;
+  maxUploadCount?: number;
   previewMaxFileSizeMb: number;
   lanUrl: string;
 }
 
 // ─── Factory ──────────────────────────────────────────────────────
 
-/**
- * Creates a set of API functions bound to a specific backend base URL.
- * Used by `useFiles(serverUrl)` to communicate with a chosen server instance
- * (local or remote on the LAN).
- *
- * @param baseUrl - The backend base URL (e.g. `"http://192.168.1.10:3001"`).
- * @returns An object containing all API methods scoped to `baseUrl`.
- */
-/** Thrown by the axios interceptor when the server returns 401. */
-export class AuthError extends Error {
-  constructor() { super('Unauthorized'); this.name = 'AuthError'; }
-}
-
+/** API functions bound to a backend base URL (local or remote on the LAN). */
 export function createFilesApi(baseUrl: string) {
-  const instance = axios.create({ baseURL: baseUrl });
-
-  // Attach session token to every request
-  instance.interceptors.request.use((config) => {
-    const token = getToken();
-    if (token) config.headers['X-SrvFiles-Token'] = token;
-    return config;
-  });
-
-  // On 401: clear stale token and throw AuthError so callers can show PinDialog
-  instance.interceptors.response.use(
-    (res) => res,
-    (err) => {
-      if (err.response?.status === 401) {
-        void log.warn('[FilesApi] 401 Unauthorized — clearing token', { url: err.config?.url });
-        clearToken();
-        return Promise.reject(new AuthError());
-      }
-      void log.error('[FilesApi] request failed', { url: err.config?.url, status: err.response?.status, error: String(err) });
-      return Promise.reject(err);
-    }
-  );
-
   return {
-    /**
-     * Fetches the list of all uploaded files.
-     *
-     * @returns A promise resolving to `{ files, count }`.
-     */
-    getFiles: (): Promise<{ files: FileInfo[]; count: number }> =>
-      instance.get('/api/files').then((r) => r.data),
+    baseUrl,
 
-    /**
-     * Uploads one or more files using `multipart/form-data`.
-     * Optionally reports upload progress as a percentage (0–100).
-     *
-     * @param files - Array of `File` objects to upload.
-     * @param onProgress - Optional callback invoked with the current progress percentage.
-     * @returns A promise resolving to `{ message, files }` with the uploaded file metadata.
-     */
-    uploadFiles: (
-      files: File[],
-      onProgress?: (progress: number) => void
-    ): Promise<{ message: string; files: UploadedFile[] }> => {
-      const formData = new FormData();
-      files.forEach((f) => formData.append('files', f));
-      return instance
-        .post('/api/files/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          onUploadProgress: (event) => {
-            if (event.total && onProgress) {
-              onProgress(Math.round((event.loaded * 100) / event.total));
-            }
-          },
-        })
-        .then((r) => r.data);
+    getFiles: (signal?: AbortSignal) =>
+      apiFetch<{ files: FileInfo[]; count: number }>(baseUrl, '/api/files', { signal, action: 'obtener la lista de archivos' }),
+
+    /** Sube archivos (multipart) con progreso 0–1 y cancelación. */
+    uploadFiles: (files: File[], onProgress?: (fraction: number) => void, signal?: AbortSignal) => {
+      const form = new FormData();
+      files.forEach((f) => form.append('files', f));
+      return uploadWithProgress<UploadResult>(baseUrl, '/api/files/upload', form, onProgress, signal);
     },
 
-    /**
-     * Permanently deletes a file by name.
-     *
-     * @param filename - The exact filename to delete (will be URL-encoded internally).
-     * @returns A promise resolving to `{ message }` on success.
-     */
-    deleteFile: (filename: string): Promise<{ message: string }> =>
-      instance.delete(`/api/files/${encodeURIComponent(filename)}`).then((r) => r.data),
+    deleteFile: (filename: string) =>
+      apiFetch<{ message: string }>(baseUrl, `/api/files/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+        action: 'eliminar el archivo',
+      }),
+
+    getStats: (signal?: AbortSignal) =>
+      apiFetch<DiskStats>(baseUrl, '/api/files/stats', { signal, action: 'leer el espacio en disco' }),
+
+    getConfig: (signal?: AbortSignal) =>
+      apiFetch<AppConfig>(baseUrl, '/api/config', { signal, action: 'leer la configuración' }),
 
     /**
-     * Fetches disk space statistics for the server's upload volume.
-     *
-     * @returns A promise resolving to `{ total, used, free }` in bytes.
+     * URL para enlaces del navegador (<a>, <img>, <video>), que no pueden
+     * mandar cabeceras. Pide al servidor un token de enlace válido solo para
+     * ese archivo y por unos minutos; el token de sesión nunca va en la URL.
      */
-    getStats: (): Promise<DiskStats> =>
-      instance.get('/api/files/stats').then((r) => r.data),
-
-    /**
-     * Fetches the server's runtime configuration (app name, LAN IP, ports, etc.).
-     *
-     * @returns A promise resolving to {@link AppConfig}.
-     */
-    getConfig: (): Promise<AppConfig> => {
-      const token = getToken();
-      return axios.get(`${baseUrl}/api/config`, {
-        headers: token ? { 'X-SrvFiles-Token': token } : {},
-      }).then((r) => r.data);
+    getLinkedUrl: async (filename: string, kind: 'download' | 'preview'): Promise<string> => {
+      const { token } = await apiFetch<{ token: string }>(baseUrl, '/api/files/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: filename }),
+        action: 'preparar el enlace del archivo',
+      });
+      return `${baseUrl}/api/files/${kind}/${encodeURIComponent(filename)}?dl=${encodeURIComponent(token)}`;
     },
 
-    /**
-     * Constructs the direct download URL for a given filename.
-     * This is a synchronous helper — no network request is made.
-     *
-     * @param filename - The exact filename as returned by the server.
-     * @returns The absolute download URL string.
-     */
-    getDownloadUrl: (filename: string): string => {
-      const token = getToken();
-      const url = `${baseUrl}/api/files/download/${encodeURIComponent(filename)}`;
-      return token ? `${url}?token=${encodeURIComponent(token)}` : url;
-    },
+    /** URL de descarga sin token (para la descarga nativa, que manda la cabecera). */
+    getPlainDownloadUrl: (filename: string): string =>
+      `${baseUrl}/api/files/download/${encodeURIComponent(filename)}`,
   };
 }
 
+export type FilesApi = ReturnType<typeof createFilesApi>;

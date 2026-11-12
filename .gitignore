@@ -11,13 +11,12 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 backend/certs/
 backend/logs/
+**/logs/
 
 # Rust / Tauri — build cache y binarios compilados (generados, no commitear)
 src-tauri/target/
 src-tauri/binaries/
-
-# Flutter
-/mobile/
+src-tauri/gen/schemas/
 
 # Claude
 .claude/

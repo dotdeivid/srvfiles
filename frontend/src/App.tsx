@@ -5,7 +5,9 @@ import { useMode } from './features/server/useMode';
 import { useTransfer } from './features/transfer/useTransfer';
 import { useDeviceName } from './shared/hooks/useDeviceName';
 import { useAuth } from './features/auth/useAuth';
-import { saveReceivedFile, isTauriApp } from './lib/tauri';
+import { getToken } from './features/auth/auth.service';
+import { isTauriApp, onBackendRestarted } from './lib/tauri';
+import { checkForUpdates } from './lib/updater';
 import { DropZone } from './features/files/DropZone';
 import { FileList } from './features/files/FileList';
 import { DiskStats } from './features/files/DiskStats';
@@ -16,32 +18,37 @@ import { IncomingTransferModal } from './features/transfer/IncomingTransferModal
 import { NameModal } from './shared/components/NameModal';
 import { ServerSwitcherModal } from './features/server/ServerSwitcherModal';
 import { PinDialog } from './features/auth/PinDialog';
+import { isLocalOrigin } from './shared/utils/serverUrl';
 import { log } from './lib/logger';
-import { Server, Lock, ChevronDown, User } from 'lucide-react';
+import { Server, Lock, LockOpen, ChevronDown, User, WifiOff } from 'lucide-react';
+import type { DiscoveredServer } from './features/server/discovery.api';
 
-// ─── Root: handles auto-connect + splash ──────────────────────────
+// ─── Root: resolves the server + splash ───────────────────────────
 function App() {
-  const { serverUrl, connecting, connect, rescan } = useMode();
+  const { serverUrl, localUrl, connecting, connect, goBack, canGoBack, rescan } = useMode();
 
-  if (connecting) {
+  useEffect(() => { void checkForUpdates(); }, []);
+
+  if (connecting || !serverUrl) {
     return <ConnectingScreen />;
   }
 
   return (
     <FileApp
-      serverUrl={serverUrl!}
+      serverUrl={serverUrl}
+      localUrl={localUrl}
       onConnect={connect}
+      onGoBack={canGoBack ? goBack : undefined}
       onRescan={rescan}
     />
   );
 }
 
-// ─── Connecting / splash screen ────────────────────────────────────
 function ConnectingScreen() {
   return (
     <div className="connecting-screen">
       <div className="connecting-screen__spinner" />
-      <p className="connecting-screen__text">Buscando servidor...</p>
+      <p className="connecting-screen__text">Conectando con el servidor...</p>
     </div>
   );
 }
@@ -49,145 +56,97 @@ function ConnectingScreen() {
 // ─── Main file UI ──────────────────────────────────────────────────
 interface FileAppProps {
   serverUrl: string;
+  localUrl: string | null;
   onConnect: (url: string) => void;
-  onRescan: () => Promise<import('./features/server/discovery.api').DiscoveredServer[]>;
+  onGoBack?: () => boolean;
+  onRescan: () => Promise<DiscoveredServer[]>;
 }
 
-function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
+function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileAppProps) {
   const prevServerUrlRef = useRef<string | null>(null);
   useEffect(() => {
     if (prevServerUrlRef.current !== serverUrl) {
-      if (prevServerUrlRef.current !== null) {
-        void log.info('[App] server URL changed', { from: prevServerUrlRef.current, to: serverUrl });
-      } else {
-        void log.info('[App] connected to server', { serverUrl });
-      }
+      void log.info('[App] connected to server', { from: prevServerUrlRef.current, to: serverUrl });
       prevServerUrlRef.current = serverUrl;
     }
   }, [serverUrl]);
 
-  const { authenticated, pinDialogOpen, pinError, serverPin, submitPin } = useAuth(serverUrl);
+  const { authenticated, pinDialogOpen, pinError, submitting, serverPin, submitPin } = useAuth(serverUrl);
 
   const {
-    files,
-    stats,
-    config,
-    loading,
-    uploading,
-    uploadProgress,
-    error,
-    upload,
-    remove,
-    getDownloadUrl,
-    fetchFiles,
-    fetchStats,
-  } = useFiles(authenticated && !pinDialogOpen ? serverUrl : null);
+    files, stats, config, loading, uploading, uploadProgress, error,
+    refresh, upload, cancelUpload, remove, getLinkedUrl, getPlainDownloadUrl,
+  } = useFiles(authenticated ? serverUrl : null);
 
   const appName = config?.appName || import.meta.env.VITE_APP_NAME || 'SrvFiles';
 
   // ─── Device name (identifies this client in transfers) ────────
   const { deviceName, showNameModal, saveName } = useDeviceName();
 
+  // La app de escritorio reinició su servidor interno: recargar.
+  useEffect(() => {
+    if (!isTauriApp()) return;
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    void onBackendRestarted(() => {
+      toast.info('El servidor interno se reinició');
+      void refresh();
+    }).then((stop) => { if (disposed) stop(); else unlisten = stop; });
+    return () => { disposed = true; unlisten?.(); };
+  }, [refresh]);
+
   // ─── Direct transfer ──────────────────────────────────────────
-  const handleFilesChanged = useCallback(() => {
-    fetchFiles();
-    fetchStats();
-  }, [fetchFiles, fetchStats]);
-
-  const handleFileReceived = useCallback(
-    async (fileName: string, _mimeType: string, blob: Blob) => {
-      void log.info('[App] file received via transfer', { fileName, size: blob.size });
-      const savedPath = await saveReceivedFile(fileName, blob);
-      toast.success(
-        savedPath
-          ? `"${fileName}" guardado en Descargas/SrvFiles`
-          : `"${fileName}" recibido`
-      );
-    },
-    []
-  );
-
+  const isOwnServer = isTauriApp() && localUrl !== null && serverUrl === localUrl;
   const {
-    myClientId,
-    onlineClients,
-    incomingRequest,
-    activeTransfer,
-    sendFileTo,
-    acceptTransfer,
-    rejectTransfer,
-    cancelTransfer,
-    rename,
-  } = useTransfer(serverUrl, deviceName, handleFileReceived, () => {
-    toast.error('El destinatario rechazó el envío');
-  }, authenticated, handleFilesChanged);
-
-  const handleSaveName = useCallback(
-    (name: string) => {
-      saveName(name);
-      const trimmed = name.trim();
-      if (trimmed) rename(trimmed);
-      setRenameOpen(false);
-    },
-    [saveName, rename]
-  );
-
-  const handleRejectTransfer = useCallback(() => {
-    rejectTransfer();
-    toast.error('Transferencia rechazada');
-  }, [rejectTransfer]);
-
-  const otherClients = onlineClients.filter((c) => c.clientId !== myClientId);
+    connected, encrypted, e2eAvailable, myClientId, onlineClients, incomingRequest, pendingRequests, activeTransfer,
+    sendFileTo, acceptTransfer, rejectTransfer, cancelTransfer, rename,
+  } = useTransfer({
+    serverUrl,
+    appName: deviceName,
+    authenticated,
+    isServer: isOwnServer,
+    serverPort: isOwnServer ? config?.port : undefined,
+    onFilesChanged: refresh,
+    onReconnected: refresh,
+  });
 
   // ─── Rename modal ─────────────────────────────────────────────
   const [renameOpen, setRenameOpen] = useState(false);
+  const handleSaveName = useCallback((name: string) => {
+    saveName(name);
+    const trimmed = name.trim();
+    if (trimmed) rename(trimmed);
+    setRenameOpen(false);
+  }, [saveName, rename]);
+
+  const otherClients = onlineClients.filter((c) => c.clientId !== myClientId);
 
   // ─── Server switcher modal ────────────────────────────────────
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const serverClients = onlineClients.filter((c) => c.isServer && c.clientId !== myClientId);
 
   // ─── Confirm delete modal ─────────────────────────────────────
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
-  const handleRequestDelete = useCallback((filename: string) => {
-    setPendingDelete(filename);
-    setConfirmOpen(true);
-  }, []);
-
   const handleConfirmDelete = useCallback(async () => {
-    if (!pendingDelete) return;
-    setConfirmOpen(false);
-    void log.info('[App] confirming delete', { filename: pendingDelete });
-    const success = await remove(pendingDelete);
-    if (success) {
-      toast.success(`"${pendingDelete}" eliminado`);
-    } else {
-      void log.error('[App] delete failed for file', { filename: pendingDelete });
-      toast.error(`Error al eliminar "${pendingDelete}"`);
-    }
+    const name = pendingDelete;
+    if (!name) return;
     setPendingDelete(null);
+    const success = await remove(name);
+    if (success) toast.success(`"${name}" eliminado`);
+    else toast.error(`No se pudo eliminar "${name}"`);
   }, [pendingDelete, remove]);
 
-  const handleCancelDelete = useCallback(() => {
-    setConfirmOpen(false);
-    setPendingDelete(null);
-  }, []);
-
-  // ─── Web URL chip ─────────────────────────────────────────────
+  // ─── URLs ─────────────────────────────────────────────────────
   // HTTPS URL — shown to the user and used in the QR / copy action.
-  // External browsers need the HTTPS port to get a secure context.
-  const webUrl = config?.lanIp && config?.httpsPort
-    ? `https://${config.lanIp}:${config.httpsPort}`
-    : null;
-  // URL del backend con IP LAN real (para mostrar en el modal, evita "localhost")
+  const webUrl = config?.lanIp && config.httpsPort ? `https://${config.lanIp}:${config.httpsPort}` : null;
+  // Backend URL with the real LAN IP (avoid showing "localhost").
   const backendLanUrl = config?.lanIp ? `http://${config.lanIp}:${config.port}` : serverUrl;
 
-  // Track local LAN IP — persists even after switching to a remote server
+  // IP LAN propia — se conserva al pasar a un servidor remoto.
   const [localLanIp, setLocalLanIp] = useState<string | null>(null);
   useEffect(() => {
-    if ((serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1')) && config?.lanIp) {
-      setLocalLanIp(config.lanIp);
-    }
+    if (isLocalOrigin(serverUrl) && config?.lanIp) setLocalLanIp(config.lanIp);
   }, [serverUrl, config?.lanIp]);
 
   return (
@@ -205,50 +164,48 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
         }}
       />
 
-      {/* PIN authentication dialog — shown for remote servers or if auto-auth fails */}
       <PinDialog
         isOpen={pinDialogOpen}
         serverUrl={backendLanUrl}
         error={pinError}
+        submitting={submitting}
         onSubmit={submitPin}
+        onCancel={onGoBack ? () => { onGoBack(); } : undefined}
       />
 
-      {/* First-launch or manual rename */}
       <NameModal
         isOpen={showNameModal || renameOpen}
         defaultName={deviceName}
         onSave={handleSaveName}
       />
 
-      {/* Incoming direct transfer request */}
       <IncomingTransferModal
         request={incomingRequest}
+        pending={pendingRequests}
         onAccept={acceptTransfer}
-        onReject={handleRejectTransfer}
+        onReject={rejectTransfer}
       />
 
-      {/* Server switcher */}
       <ServerSwitcherModal
         isOpen={switcherOpen}
         onClose={() => setSwitcherOpen(false)}
         currentServerUrl={backendLanUrl}
-        copyUrl={webUrl ?? serverUrl}
+        copyUrl={webUrl}
         serverClients={serverClients}
+        localUrl={localUrl}
         localLanIp={localLanIp}
         onConnect={onConnect}
         onRescan={onRescan}
       />
 
-      {/* Confirm delete modal */}
       <ConfirmModal
-        isOpen={confirmOpen}
+        isOpen={pendingDelete !== null}
         title="Eliminar archivo"
         message={`¿Estás seguro de que querés eliminar "${pendingDelete}"? Esta acción no se puede deshacer.`}
         onConfirm={handleConfirmDelete}
-        onCancel={handleCancelDelete}
+        onCancel={() => setPendingDelete(null)}
       />
 
-      {/* Header — fuera del contenedor max-width para ocupar 100% natural */}
       <header className="header" id="app-header">
         <div className="header__left">
           <div className="header__text">
@@ -256,7 +213,6 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
           </div>
         </div>
 
-        {/* Center: IP chip + device name — abre el server switcher / rename */}
         <div className="header__center">
           <button
             className="server-switcher-chip"
@@ -282,6 +238,22 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
             <User size={12} />
             <span>{deviceName}</span>
           </button>
+
+          {authenticated && (
+            connected ? (
+              <span
+                className="device-name-chip"
+                title={encrypted ? 'Conexión de transferencias cifrada (dispositivo ↔ servidor)' : 'Conexión de transferencias sin cifrar'}
+              >
+                {encrypted ? <Lock size={12} /> : <LockOpen size={12} />}
+              </span>
+            ) : (
+              <span className="device-name-chip" title="Sin conexión con el servidor — reconectando…" role="status">
+                <WifiOff size={12} />
+                <span>Reconectando…</span>
+              </span>
+            )
+          )}
         </div>
 
         <div className="header__right">
@@ -290,21 +262,22 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
       </header>
 
       <div className={`app ${isTauriApp() ? 'app--tauri' : ''}`}>
-        {/* Main content */}
         <main className="main">
           {error && (
-            <div className="error-banner" id="error-banner">
+            <div className="error-banner" id="error-banner" role="alert">
               <span>⚠️ {error}</span>
+              <button className="btn btn--ghost btn--sm" onClick={() => void refresh()}>Reintentar</button>
             </div>
           )}
 
           <DropZone
             onUpload={upload}
+            onCancel={cancelUpload}
             uploading={uploading}
             uploadProgress={uploadProgress}
+            maxFileSizeMb={config?.maxFileSizeMb}
           />
 
-          {/* Direct transfer — animates open when other devices are connected */}
           <div className={`clients-wrap ${otherClients.length > 0 ? 'clients-wrap--open' : ''}`}>
             <div className="clients-wrap__inner">
               <OnlineClients
@@ -313,8 +286,9 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
                 activeTransfer={activeTransfer}
                 onSendFile={sendFileTo}
                 onCancelTransfer={cancelTransfer}
-                onViewServer={(url) => { onConnect(url); }}
+                onViewServer={onConnect}
                 currentServerUrl={backendLanUrl}
+                e2eAvailable={e2eAvailable}
               />
             </div>
           </div>
@@ -322,8 +296,10 @@ function FileApp({ serverUrl, onConnect, onRescan }: FileAppProps) {
           <FileList
             files={files}
             loading={loading}
-            onRequestDelete={handleRequestDelete}
-            getDownloadUrl={getDownloadUrl}
+            onRequestDelete={setPendingDelete}
+            getLinkedUrl={getLinkedUrl}
+            getPlainDownloadUrl={getPlainDownloadUrl}
+            token={getToken(serverUrl)}
             canDelete={true}
             previewMaxMb={config?.previewMaxFileSizeMb}
           />

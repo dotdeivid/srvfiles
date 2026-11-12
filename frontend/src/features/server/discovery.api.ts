@@ -1,38 +1,24 @@
-import axios from 'axios';
-import { getApiUrl } from '../files/files.api';
-import { getToken } from '../auth/auth.service';
+import { apiFetch } from '../../lib/http';
 import { log } from '../../lib/logger';
 
 export interface DiscoveredServer {
   ip: string;
   url: string;
   appName: string;
+  httpsPort?: number;
 }
 
 /**
- * Asks the local backend to scan the subnet for other SrvFiles instances.
- * The actual network probing happens server-side; this call always hits localhost.
- * Uses a 15-second timeout to accommodate slow networks.
- *
- * @returns A promise resolving to an array of {@link DiscoveredServer} objects
- *          found on the local network, excluding the server itself.
+ * Asks the local backend to scan the subnet for other SrvFiles servers.
+ * El escaneo lo hace el servidor; [localUrl] es siempre el backend local con
+ * su propio token.
  */
-export async function scanNetwork(): Promise<DiscoveredServer[]> {
-  const localApi = getApiUrl();
-  const token = getToken();
-  void log.debug('[Discovery] starting network scan', { localApi });
-  try {
-    const { data } = await axios.get<DiscoveredServer[]>(
-      `${localApi}/api/discovery/scan`,
-      {
-        timeout: 15000,
-        headers: token ? { 'X-SrvFiles-Token': token } : {},
-      }
-    );
-    void log.info('[Discovery] scan complete', { found: data.length });
-    return data;
-  } catch (err) {
-    void log.error('[Discovery] scan failed', { error: String(err) });
-    throw err;
-  }
+export async function scanNetwork(localUrl: string): Promise<DiscoveredServer[]> {
+  void log.debug('[Discovery] starting network scan', { localUrl });
+  const data = await apiFetch<DiscoveredServer[]>(localUrl, '/api/discovery/scan', {
+    timeoutMs: 15_000,
+    action: 'buscar servidores en la red',
+  });
+  void log.info('[Discovery] scan complete', { found: data.length });
+  return data;
 }

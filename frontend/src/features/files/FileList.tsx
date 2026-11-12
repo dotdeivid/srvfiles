@@ -14,12 +14,16 @@ interface FileListProps {
   files: FileInfo[];
   loading: boolean;
   onRequestDelete: (filename: string) => void;
-  getDownloadUrl: (filename: string) => string;
+  getLinkedUrl: (filename: string, kind: 'download' | 'preview') => Promise<string>;
+  getPlainDownloadUrl: (filename: string) => string;
+  token: string | null;
   canDelete: boolean;
   previewMaxMb?: number;
 }
 
-export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canDelete, previewMaxMb }: FileListProps) {
+export function FileList({
+  files, loading, onRequestDelete, getLinkedUrl, getPlainDownloadUrl, token, canDelete, previewMaxMb,
+}: FileListProps) {
   const [viewMode, setViewMode]   = useState<'list' | 'grid'>('list');
   const [inputValue, setInputValue] = useState('');
   const [search, setSearch]       = useState('');
@@ -74,7 +78,7 @@ export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canD
             <button
               className="file-list__search-clear"
               onClick={() => { setInputValue(''); setSearch(''); }}
-              aria-label="Clear search"
+              aria-label="Limpiar búsqueda"
             >
               ✕
             </button>
@@ -152,7 +156,9 @@ export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canD
                       file={filteredFiles[vRow.index]}
                       onRequestDelete={onRequestDelete}
                       viewMode="list"
-                      getDownloadUrl={getDownloadUrl}
+                      getLinkedUrl={getLinkedUrl}
+                      getPlainDownloadUrl={getPlainDownloadUrl}
+                      token={token}
                       canDelete={canDelete}
                       previewMaxMb={previewMaxMb}
                     />
@@ -171,7 +177,9 @@ export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canD
                     file={file}
                     onRequestDelete={onRequestDelete}
                     viewMode="list"
-                    getDownloadUrl={getDownloadUrl}
+                    getLinkedUrl={getLinkedUrl}
+                    getPlainDownloadUrl={getPlainDownloadUrl}
+                    token={token}
                     canDelete={canDelete}
                     previewMaxMb={previewMaxMb}
                   />
@@ -191,7 +199,9 @@ export function FileList({ files, loading, onRequestDelete, getDownloadUrl, canD
               file={file}
               onRequestDelete={onRequestDelete}
               viewMode="grid"
-              getDownloadUrl={getDownloadUrl}
+              getLinkedUrl={getLinkedUrl}
+              getPlainDownloadUrl={getPlainDownloadUrl}
+              token={token}
               canDelete={canDelete}
               previewMaxMb={previewMaxMb}
             />

@@ -243,3 +243,27 @@ cp -r dist/* ../mobile/assets/www/
 Luego compilar la app Flutter normalmente. El relay embebido sirve los archivos estáticos desde `assets/www/`.
 
 > Hay que repetir este proceso cada vez que se modifique el frontend.
+
+---
+
+## Actualizador automático de la app de escritorio
+
+La app busca versiones nuevas en GitHub Releases al iniciar (`frontend/src/lib/updater.ts`) y verifica cada paquete con una clave pública antes de instalarlo. Para activarlo hay que crear el par de claves **una sola vez**:
+
+```bash
+npx tauri signer generate -w ~/.tauri/srvfiles.key
+```
+
+El comando pide una contraseña y muestra la **clave pública**.
+
+1. Pegá la clave pública en `src-tauri/tauri.conf.json` → `plugins.updater.pubkey` (reemplaza `REEMPLAZAR_CON_LA_CLAVE_PUBLICA_DE_npx_tauri_signer_generate`) y commiteá el cambio.
+2. Cargá la clave privada y su contraseña como secretos del repositorio en GitHub:
+   ```bash
+   gh secret set TAURI_SIGNING_PRIVATE_KEY < ~/.tauri/srvfiles.key
+   gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD   # te pide la contraseña
+   ```
+3. Publicá un release con un tag (`git tag v1.1.0 && git push --tags`). Con los secretos cargados, `release.yml` genera los paquetes de actualización firmados y `latest.json`, que es lo que consultan las apps instaladas.
+
+**Guardá la clave privada y la contraseña en un lugar seguro** (gestor de contraseñas). Si las perdés, las apps ya instaladas no aceptarán actualizaciones firmadas con una clave nueva y habrá que reinstalar a mano.
+
+Sin los secretos, el release se publica igual pero sin actualizaciones automáticas. Para compilar en local no hace falta la clave.

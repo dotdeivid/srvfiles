@@ -2,18 +2,18 @@ package auth
 
 import (
 	"encoding/json"
-	"net"
+	"io"
 	"net/http"
-	"strings"
 
 	"srvfiles/internal/logger"
+	"srvfiles/internal/webguard"
 )
 
 // Login handles POST /api/auth.
 // Body: { "pin": "123456" }
 // Returns: { "token": "..." } or 400/401/429.
 func Login(w http.ResponseWriter, r *http.Request) {
-	ip := normalizeIP(r)
+	ip := webguard.ClientIP(r)
 
 	if CheckRateLimit(ip) {
 		logger.Log.Warn("auth.handler.go", "Rate limited auth attempt", "ip", ip)
@@ -25,7 +25,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Pin string `json:"pin"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Pin == "" {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body); err != nil || body.Pin == "" {
 		logger.Log.Warn("auth.handler.go", "Auth attempt with missing PIN", "ip", ip)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "PIN requerido"})
 		return
@@ -42,11 +42,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// PinHandler handles GET /api/pin.
-// Only responds to connections coming from localhost (used by Tauri IPC).
+// PinHandler handles GET /api/pin. Lo usa la app de escritorio para
+// autenticarse sola y mostrar el PIN.
+//
+// Solo responde si la conexión viene de esta máquina (IP real del socket) y
+// el Host es un nombre de loopback (evita DNS rebinding). Además el
+// middleware CORS rechaza orígenes de navegador no permitidos.
 func PinHandler(w http.ResponseWriter, r *http.Request) {
-	ip := normalizeIP(r)
-	if ip != "127.0.0.1" && ip != "::1" && ip != "" {
+	if !webguard.IsLoopback(r) || !webguard.HasLocalHost(r) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "Forbidden"})
 		return
 	}
@@ -55,24 +58,11 @@ func PinHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Server not ready"})
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]string{"pin": pin})
 }
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
-
-// normalizeIP extracts and normalizes the client IP from the request.
-// Strips ::ffff: prefix (IPv4-mapped IPv6) and normalizes ::1 to 127.0.0.1.
-func normalizeIP(r *http.Request) string {
-	ip := r.RemoteAddr
-	if host, _, err := net.SplitHostPort(ip); err == nil {
-		ip = host
-	}
-	ip = strings.TrimPrefix(ip, "::ffff:")
-	if ip == "::1" {
-		ip = "127.0.0.1"
-	}
-	return ip
-}
 
 // writeJSON writes a JSON response with the given status code.
 func writeJSON(w http.ResponseWriter, status int, body any) {

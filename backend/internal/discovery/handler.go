@@ -8,7 +8,6 @@ import (
 )
 
 // Handler handles GET /api/discovery/scan.
-// Equivalent to scan() in discovery.controller.ts.
 func Handler(w http.ResponseWriter, r *http.Request) {
 	servers := ScanNetwork()
 	if servers == nil {

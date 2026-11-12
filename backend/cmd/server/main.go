@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"srvfiles/internal/network"
 	"srvfiles/internal/storage"
 	"srvfiles/internal/transfer"
+	"srvfiles/internal/webguard"
 )
 
 func main() {
@@ -34,46 +36,10 @@ func main() {
 	// Wire up file-change notifications to the WebSocket relay
 	files.OnFilesChanged = transfer.Default.BroadcastFilesChanged
 
-	// ─── Router (shared between HTTP and HTTPS) ───────────────────────
-	r := chi.NewRouter()
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
-	r.Use(corsMiddleware)
-	r.Use(middleware.Compress(5))
-
-	// ─── Public routes ────────────────────────────────────────────────────
-	r.Get("/api/health", health.Handler)
-	r.Post("/api/auth", auth.Login)
-	r.Get("/api/pin", auth.PinHandler)
-
-	// WebSocket relay — auth handled at WS protocol level (first message)
-	// Works for both ws:// (HTTP) and wss:// (HTTPS)
-	r.Get("/ws", transfer.HandleConnection)
-
-	// ─── Protected routes (require valid session token) ───────────────────
-	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireAuth)
-
-		// Config
-		r.Get("/api/config", configapi.Handler)
-
-		// Discovery
-		r.Get("/api/discovery/scan", discovery.Handler)
-
-		// Files
-		r.Get("/api/files", files.List)
-		r.Post("/api/files/upload", files.Upload)
-		r.Get("/api/files/download/{filename}", files.Download)
-		r.Get("/api/files/preview/{filename}", files.Preview)
-		r.Get("/api/files/stats", files.Stats)
-		r.Delete("/api/files/{filename}", files.Delete)
-	})
-
-	// ─── Frontend static files + SPA fallback ────────────────────────────
-	r.Handle("/*", newSPAHandler())
+	r := newRouter()
 
 	// ─── Generate PIN ─────────────────────────────────────────────────────
-	pin   := auth.GeneratePin()
+	pin := auth.GeneratePin()
 	lanIp := network.GetLanIp()
 
 	// ─── HTTP server (loopback + LAN — Tauri webview and Flutter) ─────────
@@ -84,19 +50,20 @@ func main() {
 	if err != nil {
 		logger.Log.Error("main.go", "Cannot bind HTTP port — is another instance running?",
 			"addr", httpAddr, "error", err)
+		// La app de escritorio lee esta línea de stderr para explicar el error.
+		fmt.Fprintf(os.Stderr, "SRVFILES_ERROR port_in_use %d\n", config.Port)
 		os.Exit(1)
 	}
-	httpServer := &http.Server{Handler: r}
+	httpServer := newHTTPServer(r)
 
 	// ─── HTTPS server (LAN — external browsers) ──────────────────────────
 	httpsServer := startHTTPS(r, lanIp)
 
 	// ─── Startup banner ───────────────────────────────────────────────────
 	fmt.Printf("\n🗂️  %s running!\n", config.AppName)
-	fmt.Printf("   Local (Tauri):  http://localhost:%d\n", config.Port)
+	fmt.Printf("   Local:          http://localhost:%d\n", config.Port)
 	fmt.Printf("   Network (web):  https://%s:%d\n", lanIp, config.HttpsPort)
 	fmt.Printf("   Max file size:  %d MB\n", config.MaxFileSizeMB)
-	// Special format for Tauri IPC to parse the PIN — DO NOT change this line
 	fmt.Printf("   PIN: %s\n", pin)
 	fmt.Println()
 
@@ -125,20 +92,88 @@ func main() {
 	}
 }
 
+// newRouter builds the router shared by the HTTP and HTTPS servers.
+//
+// No se usa middleware.RealIP: el servidor no está detrás de un proxy y
+// confiar en X-Forwarded-For permitía falsificar la IP (y leer el PIN).
+func newRouter() http.Handler {
+	r := chi.NewRouter()
+	r.Use(middleware.Recoverer)
+	r.Use(webguard.SecurityHeaders)
+	r.Use(webguard.CORS)
+	r.Use(compressExceptFiles)
+
+	// ─── Public routes ────────────────────────────────────────────────────
+	r.Get("/api/health", health.Handler)
+	r.Post("/api/auth", auth.Login)
+	r.Get("/api/pin", auth.PinHandler) // solo loopback; ver auth.PinHandler
+
+	// WebSocket relay — auth handled at WS protocol level (first message)
+	r.Get("/ws", transfer.HandleConnection)
+
+	// ─── Protected routes (require valid session token) ───────────────────
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireAuth)
+		r.Get("/api/config", configapi.Handler)
+		r.Get("/api/discovery/scan", discovery.Handler)
+		r.Get("/api/files", files.List)
+		r.Post("/api/files/upload", files.Upload)
+		r.Post("/api/files/link", files.Link)
+		r.Get("/api/files/stats", files.Stats)
+		r.Delete("/api/files/{filename}", files.Delete)
+	})
+
+	// Downloads and previews also accept a short-lived, single-file link
+	// token in the query (?dl=): <a href>, <img> y <video> no mandan cabeceras.
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireAuthOrLink)
+		r.Get("/api/files/download/{filename}", files.Download)
+		r.Get("/api/files/preview/{filename}", files.Preview)
+	})
+
+	// ─── Frontend static files + SPA fallback ────────────────────────────
+	r.Handle("/*", newSPAHandler())
+	return r
+}
+
+// compressExceptFiles compresses API/JSON and static assets, but not file
+// downloads/previews: comprimirlos gasta CPU y quita Content-Length (sin
+// progreso ni reanudación).
+func compressExceptFiles(next http.Handler) http.Handler {
+	compressed := middleware.Compress(5)(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/files/download/") ||
+			strings.HasPrefix(r.URL.Path, "/api/files/preview/") ||
+			r.URL.Path == "/ws" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		compressed.ServeHTTP(w, r)
+	})
+}
+
+// newHTTPServer: timeouts against slow-header attacks. Sin WriteTimeout global
+// porque cortaría las descargas largas.
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    64 * 1024,
+	}
+}
+
 // startHTTPS creates the TLS certificate and starts the HTTPS server in a goroutine.
 // Returns the server so main can shut it down gracefully.
 // If cert generation fails, logs the error and returns nil (HTTP-only mode).
 func startHTTPS(handler http.Handler, lanIp string) *http.Server {
-	tlsCert, err := cert.GetOrCreateCert(config.CertsDir)
+	tlsCert, err := cert.GetOrCreateCert(config.CertsDir, network.LanIPs())
 	if err != nil {
 		logger.Log.Error("main.go", "Failed to get TLS certificate — HTTPS disabled", "error", err)
 		return nil
 	}
 
 	httpsAddr := fmt.Sprintf("%s:%d", config.Host, config.HttpsPort)
-
-	// Use net.Listen + tls.NewListener so we can pass the cert directly
-	// without relying on certFile/keyFile path parameters.
 	ln, err := net.Listen("tcp", httpsAddr)
 	if err != nil {
 		logger.Log.Error("main.go", "Failed to listen on HTTPS port — HTTPS disabled",
@@ -148,12 +183,12 @@ func startHTTPS(handler http.Handler, lanIp string) *http.Server {
 
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
-		// Enable HTTP/2
-		NextProtos: []string{"h2", "http/1.1"},
+		MinVersion:   tls.VersionTLS12,
+		NextProtos:   []string{"h2", "http/1.1"},
 	}
 	tlsListener := tls.NewListener(ln, tlsConfig)
 
-	server := &http.Server{Handler: handler}
+	server := newHTTPServer(handler)
 	go func() {
 		if err := server.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
 			logger.Log.Error("main.go", "HTTPS server error", "error", err)
@@ -163,21 +198,3 @@ func startHTTPS(handler http.Handler, lanIp string) *http.Server {
 	logger.Log.Debug("main.go", "HTTPS server started", "port", config.HttpsPort, "lanIp", lanIp)
 	return server
 }
-
-// ─── CORS middleware ──────────────────────────────────────────────────────────
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-SrvFiles-Token, Range")
-		// Expose headers needed for Range/streaming (video seek, partial downloads)
-		w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-

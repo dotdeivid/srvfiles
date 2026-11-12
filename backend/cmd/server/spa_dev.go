@@ -17,7 +17,7 @@ func newSPAHandler() http.Handler {
 
 // spaHandlerDir serves static files from distDir with SPA fallback to index.html.
 func spaHandlerDir(distDir string) http.Handler {
-	fs         := http.Dir(distDir)
+	fs := http.Dir(distDir)
 	fileServer := http.FileServer(fs)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

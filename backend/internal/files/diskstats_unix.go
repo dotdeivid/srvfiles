@@ -10,7 +10,7 @@ func getDiskStats(path string) (DiskStats, error) {
 		return DiskStats{}, err
 	}
 	total := stat.Blocks * uint64(stat.Bsize)
-	free  := stat.Bavail * uint64(stat.Bsize)
+	free := stat.Bavail * uint64(stat.Bsize)
 	return DiskStats{
 		Total: total,
 		Free:  free,
