@@ -3,6 +3,7 @@ import { formatBytes } from '../../shared/utils/format';
 import { formatSas } from '../../lib/e2e';
 import type { PendingRequest } from './useTransfer';
 import type { TransferClient } from './transfer.api';
+import { Dialog } from '../../shared/components/Dialog';
 import { Monitor, Smartphone, Globe, File as FileIcon, ShieldCheck } from 'lucide-react';
 
 interface IncomingTransferModalProps {
@@ -21,8 +22,8 @@ interface IncomingTransferModalProps {
  * El receptor tiene que comparar el código de verificación con el que ve el
  * emisor: así se detecta un intermediario que haya cambiado las claves. Por
  * eso el código es lo principal del diálogo y aceptar es decir "coincide".
- * Hacer clic fuera del diálogo no rechaza, y el foco arranca en Rechazar para
- * que un Enter apurado no acepte.
+ * Ni Esc ni el clic fuera rechazan, y el foco arranca en Rechazar para que
+ * un Enter apurado no acepte.
  */
 export function IncomingTransferModal({ request, sender, pending = 1, onAccept, onReject }: IncomingTransferModalProps) {
   const rejectRef = useRef<HTMLButtonElement>(null);
@@ -34,15 +35,15 @@ export function IncomingTransferModal({ request, sender, pending = 1, onAccept, 
     sender?.deviceType === 'mobile' ? Smartphone :
     sender && !sender.isServer ? Globe : Monitor;
 
+  // Sin onClose: ni Esc ni el clic fuera rechazan; hay que elegir un botón.
   return (
-    <div className="modal-overlay">
-      <div
-        className="modal transfer-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="transfer-modal-title"
-        aria-describedby="transfer-modal-sas-hint"
-      >
+    <Dialog
+      open
+      labelledBy="transfer-modal-title"
+      describedBy="transfer-modal-sas-hint"
+      initialFocusRef={rejectRef}
+    >
+      <div className="modal transfer-modal">
         <div className="modal__header">
           <h3 className="modal__title" id="transfer-modal-title">Archivo entrante</h3>
         </div>
@@ -83,6 +84,6 @@ export function IncomingTransferModal({ request, sender, pending = 1, onAccept, 
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

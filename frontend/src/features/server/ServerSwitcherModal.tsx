@@ -6,7 +6,9 @@ import { authenticate } from '../auth/auth.service';
 import { PinDialog } from '../auth/PinDialog';
 import { stripProtocol } from '../../shared/utils/format';
 import { hostOf, isLocalOrigin, normalizeServerUrl, sameHost, serverUrlFor } from '../../shared/utils/serverUrl';
-import { Server, Globe, Check, Copy, ChevronRight, RefreshCw } from 'lucide-react';
+import { Dialog } from '../../shared/components/Dialog';
+import { CopyButton } from '../../shared/components/CopyButton';
+import { Server, Globe, ChevronRight, RefreshCw, X } from 'lucide-react';
 
 interface ServerSwitcherModalProps {
   isOpen: boolean;
@@ -26,46 +28,6 @@ interface ServerOption {
   appName: string;
   httpsPort?: number;
   isThisMachine?: boolean;
-}
-
-// ─── Clipboard ────────────────────────────────────────────────────────
-
-/** Copia texto. navigator.clipboard no existe en HTTP sin contexto seguro. */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // probar la alternativa
-  }
-  const area = document.createElement('textarea');
-  area.value = text;
-  area.style.position = 'fixed';
-  area.style.opacity = '0';
-  document.body.appendChild(area);
-  area.select();
-  const ok = document.execCommand('copy');
-  document.body.removeChild(area);
-  return ok;
-}
-
-function CopyBtn({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
-  async function handleCopy() {
-    if (!(await copyText(text))) return;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setCopied(true);
-    timerRef.current = setTimeout(() => setCopied(false), 2000);
-  }
-  return (
-    <button className="server-switcher__copy-btn" onClick={handleCopy} title="Copiar" aria-label={`Copiar ${text}`}>
-      {copied ? <Check size={13} strokeWidth={2.5} /> : <Copy size={13} />}
-    </button>
-  );
 }
 
 // ─── Component ───────────────────────────────────────────────────────
@@ -194,11 +156,13 @@ export function ServerSwitcherModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal server-switcher" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="server-switcher-title">
+    <Dialog open onClose={onClose} labelledBy="server-switcher-title">
+      <div className="modal server-switcher">
         <div className="server-switcher__header">
           <h3 className="server-switcher__title" id="server-switcher-title">Servidores</h3>
-          <button className="modal__close" onClick={onClose} aria-label="Cerrar">✕</button>
+          <button className="btn-icon dialog__close" onClick={onClose} aria-label="Cerrar">
+            <X size={18} strokeWidth={2.5} />
+          </button>
         </div>
 
         <div className="server-switcher__section-label">Conectado</div>
@@ -208,13 +172,13 @@ export function ServerSwitcherModal({
               <Server size={12} style={{ opacity: 0.6, flexShrink: 0 }} />
               <span className="server-switcher__url-label">Servidor</span>
               <span className="server-switcher__url-value">{backendDisplay}</span>
-              <CopyBtn text={backendDisplay} />
+              <CopyButton text={backendDisplay} />
             </div>
             <div className="server-switcher__url-row">
               <Globe size={12} style={{ opacity: 0.6, flexShrink: 0 }} />
               <span className="server-switcher__url-label">Web</span>
               <span className="server-switcher__url-value">{webDisplay}</span>
-              <CopyBtn text={copyUrl ?? webDisplay} />
+              <CopyButton text={copyUrl ?? webDisplay} />
             </div>
           </div>
         </div>
@@ -274,6 +238,6 @@ export function ServerSwitcherModal({
           Volver a escanear
         </button>
       </div>
-    </div>
+    </Dialog>
   );
 }

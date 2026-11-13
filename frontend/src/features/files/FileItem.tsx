@@ -138,7 +138,7 @@ export function FileItem({
     return (
       <>
         <div className="file-card" id={`file-${file.name}`}>
-          <div className="file-card__icon">{getFileIcon(file.name)}</div>
+          <div className="file-card__icon" aria-hidden="true">{getFileIcon(file.name)}</div>
           <div className="file-card__info">
             <span className="file-card__name" title={file.name}>{file.name}</span>
             <span className="file-card__meta">{formatBytes(file.size)}</span>
@@ -154,7 +154,7 @@ export function FileItem({
     <>
       <tr className="file-row" id={`file-${file.name}`}>
         <td className="file-row__name">
-          <span className="file-row__icon">{getFileIcon(file.name)}</span>
+          <span className="file-row__icon" aria-hidden="true">{getFileIcon(file.name)}</span>
           <span title={file.name}>{file.name}</span>
         </td>
         <td className="file-row__size">{formatBytes(file.size)}</td>

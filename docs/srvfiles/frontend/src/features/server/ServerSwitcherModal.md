@@ -8,4 +8,5 @@
 - Lista los servidores encontrados (reescaneo manual), marca el actual.
 - En el navegador abre la web del otro servidor por HTTPS (`https://host:httpsPort`); en la app de escritorio cambia de servidor y pide el PIN con `PinDialog`.
 - Campo para escribir una IP (`normalizeServerUrl`).
-- Copiar la URL: usa `navigator.clipboard` o, sin contexto seguro, un `textarea` con `execCommand('copy')`.
+- Copiar la URL con `CopyButton`.
+- Sobre `Dialog`: Esc, clic fuera y botón cerrar.

@@ -5,7 +5,7 @@ import { isTauriApp, pathInfo } from '../../lib/tauri';
 import { formatBytes } from '../../shared/utils/format';
 import { log } from '../../lib/logger';
 import type { UploadItem, UploadOutcome } from './useFiles';
-import { Upload } from 'lucide-react';
+import { Upload, X } from 'lucide-react';
 
 interface DropZoneProps {
   onUpload: (items: UploadItem[]) => Promise<UploadOutcome>;
@@ -15,7 +15,12 @@ interface DropZoneProps {
   uploadProgress: number;
   /** Límite por archivo en MB (0 o ausente = sin límite). */
   maxFileSizeMb?: number;
+  /** Ya hay archivos: se muestra como una barra en lugar del área grande. */
+  compact?: boolean;
 }
+
+// En pantallas táctiles no se arrastra: se toca para elegir.
+const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
 const keyOf = (i: UploadItem) => (i.kind === 'path' ? `p:${i.path}` : `f:${i.name}:${i.size}:${i.file.lastModified}`);
 
@@ -26,10 +31,12 @@ const keyOf = (i: UploadItem) => (i.kind === 'path' ? `p:${i.path}` : `f:${i.nam
  *   archivos en streaming al subir.
  * - En Tauri: el drag del sistema llega como rutas (el webview intercepta el
  *   drop) y se suben con un comando nativo, sin cargar el archivo en memoria.
+ * - Toda la ventana acepta archivos: no hace falta apuntar al área.
  */
-export function DropZone({ onUpload, onCancel, uploading, uploadProgress, maxFileSizeMb }: DropZoneProps) {
+export function DropZone({ onUpload, onCancel, uploading, uploadProgress, maxFileSizeMb, compact = false }: DropZoneProps) {
   const [staged, setStaged] = useState<UploadItem[]>([]);
   const [tauriDragActive, setTauriDragActive] = useState(false);
+  const [windowDragActive, setWindowDragActive] = useState(false);
   const uploadingRef = useRef(uploading);
   uploadingRef.current = uploading;
 
@@ -83,14 +90,52 @@ export function DropZone({ onUpload, onCancel, uploading, uploadProgress, maxFil
     addItems(accepted.map((file) => ({ kind: 'file' as const, file, name: file.name, size: file.size })));
   }, [addItems]);
 
-  const { getRootProps, getInputProps, isDragActive: htmlDragActive } = useDropzone({
+  const { getRootProps, getInputProps, rootRef, isDragActive: htmlDragActive } = useDropzone({
     onDrop,
     disabled: uploading,
     // En Tauri el drag del sistema lo maneja el listener de arriba.
     noDrag: isTauriApp(),
   });
 
-  const isDragActive = htmlDragActive || tauriDragActive;
+  // ─── Browser: soltar en cualquier parte de la ventana ─────────────
+  // (En Tauri el evento nativo ya cubre toda la ventana.) Los drops sobre el
+  // área los maneja react-dropzone; acá solo los de afuera.
+  useEffect(() => {
+    if (isTauriApp()) return;
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    let depth = 0;
+    const onEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth += 1;
+      setWindowDragActive(true);
+    };
+    const onLeave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) setWindowDragActive(false);
+    };
+    const onOver = (e: DragEvent) => { if (hasFiles(e)) e.preventDefault(); };
+    const onWindowDrop = (e: DragEvent) => {
+      depth = 0;
+      setWindowDragActive(false);
+      if (!hasFiles(e) || rootRef.current?.contains(e.target as Node)) return;
+      e.preventDefault();
+      if (uploadingRef.current) return;
+      onDrop(Array.from(e.dataTransfer?.files ?? []));
+    };
+    window.addEventListener('dragenter', onEnter);
+    window.addEventListener('dragleave', onLeave);
+    window.addEventListener('dragover', onOver);
+    window.addEventListener('drop', onWindowDrop);
+    return () => {
+      window.removeEventListener('dragenter', onEnter);
+      window.removeEventListener('dragleave', onLeave);
+      window.removeEventListener('dragover', onOver);
+      window.removeEventListener('drop', onWindowDrop);
+    };
+  }, [onDrop, rootRef]);
+
+  const isDragActive = htmlDragActive || tauriDragActive || windowDragActive;
   const oversized = maxBytes ? staged.filter((i) => i.size > maxBytes) : [];
   const totalSize = staged.reduce((s, i) => s + i.size, 0);
 
@@ -120,20 +165,26 @@ export function DropZone({ onUpload, onCancel, uploading, uploadProgress, maxFil
     <div className="dropzone-container">
       <div
         {...getRootProps()}
-        className={`dropzone ${isDragActive ? 'dropzone--active' : ''} ${uploading ? 'dropzone--disabled' : ''}`}
+        className={`dropzone ${compact ? 'dropzone--compact' : ''} ${isDragActive ? 'dropzone--active' : ''} ${uploading ? 'dropzone--disabled' : ''}`}
         id="file-dropzone"
       >
         <input {...getInputProps()} />
-        <div className="dropzone__icon">
-          <Upload size={48} strokeWidth={1.5} />
+        <div className="dropzone__icon" aria-hidden="true">
+          <Upload size={compact ? 20 : 48} strokeWidth={compact ? 2 : 1.5} />
         </div>
         {isDragActive ? (
-          <p className="dropzone__text">Soltá los archivos aquí...</p>
+          <p className="dropzone__text">Soltá los archivos para subirlos</p>
         ) : (
           <>
             <p className="dropzone__text">
-              Arrastrá archivos aquí o{' '}
-              <span className="dropzone__link">buscá en tu dispositivo</span>
+              {isTouch ? (
+                <span className="dropzone__link">Tocá para elegir archivos</span>
+              ) : (
+                <>
+                  Arrastrá archivos a la ventana o{' '}
+                  <span className="dropzone__link">buscá en tu dispositivo</span>
+                </>
+              )}
             </p>
             {maxFileSizeMb ? (
               <p className="dropzone__hint">Máximo {formatBytes(maxFileSizeMb * 1024 * 1024)} por archivo</p>
@@ -145,7 +196,14 @@ export function DropZone({ onUpload, onCancel, uploading, uploadProgress, maxFil
       {/* Upload progress bar */}
       {uploading && (
         <div className="upload-progress" id="upload-progress">
-          <div className="upload-progress__bar">
+          <div
+            className="upload-progress__bar"
+            role="progressbar"
+            aria-label="Subiendo archivos"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={uploadProgress}
+          >
             <div className="upload-progress__fill" style={{ width: `${uploadProgress}%` }} />
           </div>
           <span className="upload-progress__text">{uploadProgress}%</span>
@@ -172,7 +230,7 @@ export function DropZone({ onUpload, onCancel, uploading, uploadProgress, maxFil
               const tooBig = maxBytes !== null && item.size > maxBytes;
               return (
                 <li key={keyOf(item)} className="staged-files__item">
-                  <span className="staged-files__name" style={tooBig ? { color: 'var(--color-danger, #f87171)' } : undefined}>
+                  <span className={`staged-files__name ${tooBig ? 'staged-files__name--too-big' : ''}`}>
                     {item.name}
                   </span>
                   <span className="staged-files__size">
@@ -180,10 +238,10 @@ export function DropZone({ onUpload, onCancel, uploading, uploadProgress, maxFil
                   </span>
                   <button
                     onClick={() => setStaged((prev) => prev.filter((_, i) => i !== idx))}
-                    className="staged-files__remove"
+                    className="btn-icon staged-files__remove"
                     aria-label={`Quitar ${item.name}`}
                   >
-                    ✕
+                    <X size={16} strokeWidth={2.5} />
                   </button>
                 </li>
               );
@@ -194,11 +252,16 @@ export function DropZone({ onUpload, onCancel, uploading, uploadProgress, maxFil
             className="btn btn--primary"
             id="upload-btn"
             disabled={oversized.length > 0}
-            title={oversized.length > 0 ? 'Quitá los archivos que exceden el límite' : undefined}
+            aria-describedby={oversized.length > 0 ? 'staged-files-blocked' : undefined}
           >
             <Upload size={16} />
             Subir {staged.length > 1 ? `${staged.length} archivos` : 'archivo'}
           </button>
+          {oversized.length > 0 && (
+            <p className="staged-files__blocked" id="staged-files-blocked">
+              Quitá los archivos que exceden el límite para poder subir.
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { FileItem } from './FileItem';
 import type { FileInfo } from './files.api';
-import { Search, List, LayoutGrid } from 'lucide-react';
+import { Search, List, LayoutGrid, X } from 'lucide-react';
 
 // Virtualize list view when there are more rows than this threshold.
 const VIRTUAL_THRESHOLD = 30;
@@ -67,10 +67,11 @@ export function FileList({
       {/* Toolbar: search + view toggle */}
       <div className="file-list__toolbar" id="file-toolbar">
         <div className="file-list__search">
-          <Search className="file-list__search-icon" size={18} />
+          <Search className="file-list__search-icon" size={18} aria-hidden="true" />
           <input
-            type="text"
+            type="search"
             placeholder="Buscar archivos..."
+            aria-label="Buscar archivos"
             className="file-list__search-input"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -78,20 +79,22 @@ export function FileList({
           />
           {inputValue && (
             <button
-              className="file-list__search-clear"
+              className="btn-icon file-list__search-clear"
               onClick={() => { setInputValue(''); setSearch(''); }}
               aria-label="Limpiar búsqueda"
             >
-              ✕
+              <X size={16} strokeWidth={2.5} />
             </button>
           )}
         </div>
 
-        <div className="file-list__view-toggle">
+        <div className="file-list__view-toggle" role="group" aria-label="Vista">
           <button
             className={`btn-icon ${viewMode === 'list' ? 'btn-icon--active' : ''}`}
             onClick={() => setViewMode('list')}
             title="Vista lista"
+            aria-label="Vista lista"
+            aria-pressed={viewMode === 'list'}
             id="view-list-btn"
           >
             <List size={18} />
@@ -100,6 +103,8 @@ export function FileList({
             className={`btn-icon ${viewMode === 'grid' ? 'btn-icon--active' : ''}`}
             onClick={() => setViewMode('grid')}
             title="Vista grilla"
+            aria-label="Vista grilla"
+            aria-pressed={viewMode === 'grid'}
             id="view-grid-btn"
           >
             <LayoutGrid size={18} />
@@ -107,27 +112,26 @@ export function FileList({
         </div>
       </div>
 
-      {/* File count */}
-      <div className="file-list__info">
-        <span>
-          {filteredFiles.length} archivo{filteredFiles.length !== 1 ? 's' : ''}
-          {search && ` (filtrando de ${files.length})`}
-        </span>
-      </div>
+      {/* El total va en el título de la sección; acá solo el resultado de la búsqueda. */}
+      {search && (
+        <div className="file-list__info" role="status">
+          {filteredFiles.length} de {files.length} archivo{files.length !== 1 ? 's' : ''}
+        </div>
+      )}
 
       {/* Empty state */}
       {filteredFiles.length === 0 && (
         <div className="file-list__empty">
           {search ? (
             <>
-              <p className="file-list__empty-icon">🔍</p>
+              <p className="file-list__empty-icon" aria-hidden="true">🔍</p>
               <p>No se encontraron archivos que coincidan con "{search}"</p>
             </>
           ) : (
             <>
-              <p className="file-list__empty-icon">📂</p>
+              <p className="file-list__empty-icon" aria-hidden="true">📂</p>
               <p>No hay archivos aún</p>
-              <p className="file-list__empty-hint">Arrastrá archivos al área de arriba para empezar</p>
+              <p className="file-list__empty-hint">Lo que subas acá lo ven todos los dispositivos de la red.</p>
             </>
           )}
         </div>
