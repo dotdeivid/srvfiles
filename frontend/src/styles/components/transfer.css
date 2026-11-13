@@ -50,6 +50,7 @@
 
 .direct-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-md);
   padding: 10px var(--space-md);
@@ -126,7 +127,7 @@
 
 .direct-row__waiting {
   font-size: 0.78rem;
-  color: var(--warning);
+  color: var(--text-secondary);
 }
 
 .direct-row__bar-wrap {
@@ -655,6 +656,52 @@
   font-size: 0.88rem;
   color: var(--text-secondary);
   margin: 0;
+}
+
+/* ─── Código de verificación (SAS) ───────────────────────────── */
+/* Lo mismo en el diálogo del receptor y en la fila del emisor: los dos
+   leen el código y lo comparan, así que tiene que ser lo más visible. */
+.sas-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.sas-panel--inline {
+  flex-basis: 100%;
+}
+
+.sas-panel__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.sas-panel__code {
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+.sas-panel__hint {
+  margin: 0;
+  max-width: 32ch;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
 }
 
 /* ─── Small button variant ──────────────────────────────────── */

@@ -4,7 +4,7 @@ import type { ActiveTransfer } from './useTransfer';
 import { formatBytes } from '../../shared/utils/format';
 import { hostOf, serverUrlFor } from '../../shared/utils/serverUrl';
 import { formatSas } from '../../lib/e2e';
-import { FolderOpen, ArrowUp } from 'lucide-react';
+import { FolderOpen, ArrowUp, ShieldCheck } from 'lucide-react';
 
 interface OnlineClientsProps {
   clients: TransferClient[];
@@ -111,9 +111,7 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel, onViewS
         <div className="direct-row__progress-area">
           {activeTransfer.waiting ? (
             <span className="direct-row__waiting">
-              {activeTransfer.sas
-                ? <>Código <strong>{formatSas(activeTransfer.sas)}</strong> — debe coincidir con el de {client.appName}</>
-                : 'Esperando respuesta...'}
+              {activeTransfer.sas ? `Esperando que ${client.appName} confirme…` : 'Esperando respuesta…'}
             </span>
           ) : (
             <>
@@ -165,6 +163,20 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel, onViewS
             <ArrowUp size={14} strokeWidth={2.5} />
             Enviar
           </button>
+        </div>
+      )}
+
+      {/* Mientras el receptor decide, el código va en grande: es lo que hay que comparar. */}
+      {isThisRow && activeTransfer?.waiting && activeTransfer.sas && (
+        <div className="sas-panel sas-panel--inline" aria-live="polite">
+          <span className="sas-panel__label">
+            <ShieldCheck size={15} aria-hidden="true" />
+            Código de verificación
+          </span>
+          <strong className="sas-panel__code">{formatSas(activeTransfer.sas)}</strong>
+          <p className="sas-panel__hint">
+            {client.appName} tiene que ver este mismo código antes de aceptar.
+          </p>
         </div>
       )}
     </div>

@@ -20,4 +20,4 @@
 - `backendLanUrl`: `http://<lanIp>:<port>` para el selector de servidores.
 - `otherClients` / `serverClients`: dispositivos conectados sin incluirse a sí mismo.
 
-Pasa `e2eAvailable` a `OnlineClients` (sin contexto seguro no se puede enviar) y `getLinkedUrl` a la lista y la vista previa. El borrado se confirma con `ConfirmModal`.
+Pasa `e2eAvailable` a `OnlineClients` (sin contexto seguro no se puede enviar) y `getLinkedUrl` a la lista y la vista previa. El borrado se confirma con `ConfirmModal`, cuyo mensaje aclara que el archivo se elimina de la carpeta compartida para todos los dispositivos. A `IncomingTransferModal` le pasa el emisor (`sender`) buscado en la lista de conectados, para mostrar el ícono de su dispositivo.
