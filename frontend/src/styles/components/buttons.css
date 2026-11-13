@@ -102,6 +102,19 @@
 }
 
 
+/* Acción destructiva secundaria (barra de selección): el rojo fuerte queda
+   para el botón que confirma. */
+.btn--danger-ghost {
+  background: transparent;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: var(--danger);
+}
+
+.btn--danger-ghost:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
 /* ─── Touch ──────────────────────────────────────────────────────── */
 /* Con el dedo, 44px de alto mínimo (WCAG 2.5.5) y aire entre acciones
    vecinas para no tocar Borrar queriendo Descargar. */
@@ -114,6 +127,15 @@
   .btn-icon,
   .copy-btn {
     width: 44px;
+    height: 44px;
+  }
+
+  .file-select {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .file-list__sort {
     height: 44px;
   }
 

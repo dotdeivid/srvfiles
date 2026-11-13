@@ -37,6 +37,8 @@ export interface ActiveTransfer {
 /** Solicitud entrante con su sesión E2E ya derivada y el código a comparar. */
 export interface PendingRequest extends IncomingTransferRequest {
   sas: string;
+  /** Momento (ms epoch) en que se rechaza sola si nadie responde. */
+  expiresAt: number;
 }
 
 interface PendingSend {
@@ -75,7 +77,7 @@ interface Options {
 const BACKOFF_MS = [1000, 2000, 5000, 10000, 20000, 30000];
 const MAX_PENDING_REQUESTS = 5;
 /** Tiempo que se espera la respuesta del usuario antes de rechazar sola. */
-const REQUEST_TIMEOUT_MS = 60_000;
+export const REQUEST_TIMEOUT_MS = 60_000;
 
 const rejectMessage = (reason?: string) => {
   switch (reason) {
@@ -220,6 +222,7 @@ export function useTransfer({
             transferId: msg.transferId, from: msg.from, fromName: msg.fromName,
             fileName: msg.fileName, fileSize: msg.fileSize, mimeType: msg.mimeType,
             senderPublicKey: senderKey, sas: session.sas,
+            expiresAt: Date.now() + REQUEST_TIMEOUT_MS,
           }]);
         } catch (err) {
           void log.warn('[useTransfer] invalid E2E key from sender', { error: String(err) });

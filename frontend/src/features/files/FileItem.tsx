@@ -2,84 +2,34 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import type { FileInfo } from './files.api';
-import { formatBytes } from '../../shared/utils/format';
+import { formatBytes, formatDate } from '../../shared/utils/format';
 import { getFileIcon } from '../../shared/utils/fileIcons';
-import { isTauriApp, nativeDownload, onNativeProgress, cancelNativeTransfer, showInFolder } from '../../lib/tauri';
-import { errorMessage } from '../../lib/http';
-import { log } from '../../lib/logger';
+import { showInFolder } from '../../lib/tauri';
 import { canPreview } from '../../shared/utils/fileTypeHelper';
 import { PreviewModal } from '../preview/PreviewModal';
+import { downloadFile, type DownloadDeps } from './download';
 import { Download, Trash2, Eye, FolderOpen } from 'lucide-react';
 
-interface FileItemProps {
+interface FileItemProps extends DownloadDeps {
   file: FileInfo;
-  onRequestDelete: (filename: string) => void;
+  onRequestDelete: (filenames: string[]) => void;
   viewMode: 'list' | 'grid';
-  getLinkedUrl: (filename: string, kind: 'download' | 'preview') => Promise<string>;
-  getPlainDownloadUrl: (filename: string) => string;
-  token: string | null;
   canDelete: boolean;
   /** Max file size in MB allowed for preview. Comes from server config. */
   previewMaxMb?: number;
   /** El archivo está en este equipo (app de escritorio, servidor propio). */
   isLocal?: boolean;
-}
-
-/**
- * Descarga nativa (Tauri): en streaming a Descargas/SrvFiles, con progreso y
- * cancelación en el aviso. Manda el token en la cabecera.
- */
-export async function downloadWithTauri(url: string, token: string | null, fileName: string): Promise<void> {
-  const id = crypto.randomUUID();
-  const toastId = toast.loading(`Descargando ${fileName}…`, {
-    action: { label: 'Cancelar', onClick: () => void cancelNativeTransfer(id) },
-  });
-  const unlisten = await onNativeProgress('download-progress', id, (p) => {
-    if (p.total > 0) {
-      toast.loading(`Descargando ${fileName}… ${Math.round((p.loaded / p.total) * 100)}%`, {
-        id: toastId,
-        action: { label: 'Cancelar', onClick: () => void cancelNativeTransfer(id) },
-      });
-    }
-  });
-  try {
-    const path = await nativeDownload(url, token, fileName, id);
-    toast.success(`Guardado en ${path}`, { id: toastId });
-  } catch (err) {
-    const msg = String(err);
-    if (msg.includes('cancelled')) toast.info('Descarga cancelada', { id: toastId });
-    else {
-      void log.error('[FileItem] native download failed', { fileName, error: msg });
-      toast.error(`No se pudo descargar ${fileName}`, { id: toastId });
-    }
-  } finally {
-    unlisten();
-  }
-}
-
-/** Descarga en el navegador con un enlace temporal (token de un solo archivo). */
-async function downloadInBrowser(getLinkedUrl: FileItemProps['getLinkedUrl'], fileName: string): Promise<void> {
-  try {
-    const url = await getLinkedUrl(fileName, 'download');
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  } catch (err) {
-    toast.error(errorMessage(err, `descargar "${fileName}"`));
-  }
+  selected: boolean;
+  onToggleSelected: (filename: string) => void;
 }
 
 export function FileItem({
   file, onRequestDelete, viewMode, getLinkedUrl, getPlainDownloadUrl, token, canDelete, previewMaxMb = 1024, isLocal = false,
+  selected, onToggleSelected,
 }: FileItemProps) {
   const [previewing, setPreviewing] = useState(false);
 
-  const download = () => (isTauriApp()
-    ? downloadWithTauri(getPlainDownloadUrl(file.name), token, file.name)
-    : downloadInBrowser(getLinkedUrl, file.name));
+  const download = () => downloadFile(file.name, { getLinkedUrl, getPlainDownloadUrl, token });
 
   const handlePreview = () => {
     if (file.size > previewMaxMb * 1024 * 1024) {
@@ -88,6 +38,17 @@ export function FileItem({
     }
     setPreviewing(true);
   };
+
+  const checkbox = (
+    <label className="file-select" title={selected ? 'Quitar de la selección' : 'Seleccionar'}>
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={() => onToggleSelected(file.name)}
+        aria-label={`Seleccionar ${file.name}`}
+      />
+    </label>
+  );
 
   const actions = (
     <>
@@ -117,7 +78,7 @@ export function FileItem({
         </button>
       )}
       {canDelete && (
-        <button onClick={() => onRequestDelete(file.name)} className="btn-icon btn-icon--delete" title="Eliminar" aria-label={`Eliminar ${file.name}`}>
+        <button onClick={() => onRequestDelete([file.name])} className="btn-icon btn-icon--delete" title="Eliminar" aria-label={`Eliminar ${file.name}`}>
           <Trash2 size={16} />
         </button>
       )}
@@ -137,11 +98,14 @@ export function FileItem({
   if (viewMode === 'grid') {
     return (
       <>
-        <div className="file-card" id={`file-${file.name}`}>
-          <div className="file-card__icon" aria-hidden="true">{getFileIcon(file.name)}</div>
+        <div className={`file-card ${selected ? 'file-card--selected' : ''}`} id={`file-${file.name}`}>
+          <div className="file-card__top">
+            <div className="file-card__icon" aria-hidden="true">{getFileIcon(file.name)}</div>
+            {checkbox}
+          </div>
           <div className="file-card__info">
             <span className="file-card__name" title={file.name}>{file.name}</span>
-            <span className="file-card__meta">{formatBytes(file.size)}</span>
+            <span className="file-card__meta">{formatBytes(file.size)} · {formatDate(file.createdAt)}</span>
           </div>
           <div className="file-card__actions">{actions}</div>
         </div>
@@ -150,15 +114,25 @@ export function FileItem({
     );
   }
 
+  // Cada celda envuelve su contenido en un div: un <td> con display:flex deja
+  // de comportarse como celda y corta los bordes de la fila.
   return (
     <>
-      <tr className="file-row" id={`file-${file.name}`}>
-        <td className="file-row__name">
-          <span className="file-row__icon" aria-hidden="true">{getFileIcon(file.name)}</span>
-          <span title={file.name}>{file.name}</span>
+      <tr className={`file-row ${selected ? 'file-row--selected' : ''}`} id={`file-${file.name}`}>
+        <td className="file-row__cell file-row__cell--select">{checkbox}</td>
+        <td className="file-row__cell file-row__cell--name">
+          <div className="file-row__name">
+            <span className="file-row__icon" aria-hidden="true">{getFileIcon(file.name)}</span>
+            <span title={file.name}>{file.name}</span>
+          </div>
         </td>
-        <td className="file-row__size">{formatBytes(file.size)}</td>
-        <td className="file-row__actions">{actions}</td>
+        <td className="file-row__cell file-row__size">{formatBytes(file.size)}</td>
+        <td className="file-row__cell file-row__date">
+          <time dateTime={file.createdAt}>{formatDate(file.createdAt)}</time>
+        </td>
+        <td className="file-row__cell file-row__cell--actions">
+          <div className="file-row__actions">{actions}</div>
+        </td>
       </tr>
       {preview}
     </>

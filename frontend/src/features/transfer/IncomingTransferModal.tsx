@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatBytes } from '../../shared/utils/format';
 import { formatSas } from '../../lib/e2e';
-import type { PendingRequest } from './useTransfer';
+import { REQUEST_TIMEOUT_MS, type PendingRequest } from './useTransfer';
 import type { TransferClient } from './transfer.api';
 import { Dialog } from '../../shared/components/Dialog';
 import { Monitor, Smartphone, Globe, File as FileIcon, ShieldCheck } from 'lucide-react';
@@ -71,6 +71,8 @@ export function IncomingTransferModal({ request, sender, pending = 1, onAccept, 
             </p>
           </div>
 
+          <RequestCountdown key={request.transferId} expiresAt={request.expiresAt} />
+
           {pending > 1 && (
             <p className="transfer-modal__message">Hay {pending - 1} más en espera.</p>
           )}
@@ -85,5 +87,32 @@ export function IncomingTransferModal({ request, sender, pending = 1, onAccept, 
         </div>
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * Tiempo que queda antes de que la solicitud se rechace sola (useTransfer).
+ * Se actualiza cada segundo; role="timer" no se anuncia en cada tick.
+ */
+function RequestCountdown({ expiresAt }: { expiresAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const remainingMs = Math.max(0, expiresAt - now);
+  const seconds = Math.ceil(remainingMs / 1000);
+  const fraction = Math.min(1, remainingMs / REQUEST_TIMEOUT_MS);
+
+  return (
+    <div className={`request-countdown ${seconds <= 10 ? 'request-countdown--ending' : ''}`}>
+      <div className="request-countdown__track" aria-hidden="true">
+        <div className="request-countdown__fill" style={{ transform: `scaleX(${fraction})` }} />
+      </div>
+      <span className="request-countdown__text" role="timer">
+        Se rechaza sola en {seconds} s
+      </span>
+    </div>
   );
 }

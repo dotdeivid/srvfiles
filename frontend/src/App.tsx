@@ -133,15 +133,24 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
   const serverClients = onlineClients.filter((c) => c.isServer && c.clientId !== myClientId);
 
   // ─── Confirm delete modal ─────────────────────────────────────
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
 
   const handleConfirmDelete = useCallback(async () => {
-    const name = pendingDelete;
-    if (!name) return;
+    const names = pendingDelete;
+    if (!names || names.length === 0) return;
     setPendingDelete(null);
-    const success = await remove(name);
-    if (success) toast.success(`"${name}" eliminado`);
-    else toast.error(`No se pudo eliminar "${name}"`);
+    // Uno tras otro: el servidor avisa files-changed por cada uno igual.
+    const failed: string[] = [];
+    for (const name of names) {
+      if (!(await remove(name))) failed.push(name);
+    }
+    if (failed.length === 0) {
+      toast.success(names.length === 1 ? `"${names[0]}" eliminado` : `${names.length} archivos eliminados`);
+    } else if (failed.length === 1) {
+      toast.error(`No se pudo eliminar "${failed[0]}"`);
+    } else {
+      toast.error(`No se pudieron eliminar ${failed.length} de ${names.length} archivos`);
+    }
   }, [pendingDelete, remove]);
 
   // ─── URLs ─────────────────────────────────────────────────────
@@ -216,8 +225,13 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
 
       <ConfirmModal
         isOpen={pendingDelete !== null}
-        title="Eliminar archivo"
-        message={`"${pendingDelete}" se eliminará de la carpeta compartida para todos los dispositivos. No se puede deshacer.`}
+        title={pendingDelete && pendingDelete.length > 1 ? `Eliminar ${pendingDelete.length} archivos` : 'Eliminar archivo'}
+        message={
+          pendingDelete && pendingDelete.length > 1
+            ? `Los ${pendingDelete.length} archivos se eliminarán de la carpeta compartida para todos los dispositivos. No se puede deshacer.`
+            : `"${pendingDelete?.[0]}" se eliminará de la carpeta compartida para todos los dispositivos. No se puede deshacer.`
+        }
+        confirmLabel={pendingDelete && pendingDelete.length > 1 ? `Eliminar ${pendingDelete.length}` : 'Eliminar'}
         onConfirm={handleConfirmDelete}
         onCancel={() => setPendingDelete(null)}
       />

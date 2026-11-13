@@ -689,3 +689,38 @@
   color: var(--text-secondary);
   line-height: 1.5;
 }
+
+/* ─── Incoming request countdown ─────────────────────────────── */
+.request-countdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.request-countdown__track {
+  height: 3px;
+  background: rgba(99, 102, 241, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.request-countdown__fill {
+  height: 100%;
+  background: var(--accent-primary);
+  transform-origin: left;
+  transition: transform 1s linear;
+}
+
+.request-countdown__text {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.request-countdown--ending .request-countdown__fill {
+  background: var(--warning);
+}
+
+.request-countdown--ending .request-countdown__text {
+  color: var(--warning);
+}
