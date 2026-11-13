@@ -1,22 +1,51 @@
-/* ─── Preview modal ───────────────────────────────────────────────── */
-.preview-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  background: rgba(0, 0, 0, 0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* ─── Dialog (native <dialog>, see Dialog.tsx) ────────────────────── */
+/* El <dialog> es solo el contenedor transparente; el aspecto lo da el hijo
+   (.modal, .pin-modal, .preview-modal). Su margen cuenta como "fuera". */
+.dialog {
+  margin: auto;
   padding: var(--space-md);
-  backdrop-filter: blur(4px);
+  border: none;
+  background: transparent;
+  color: inherit;
+  max-width: 100vw;
+  max-height: 100dvh;
+  overflow: auto;
 }
 
+.dialog:focus-visible {
+  outline: none;
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: fadeInOverlay 200ms ease;
+}
+
+.dialog--preview::backdrop {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
+.dialog .modal {
+  width: min(420px, calc(100vw - 2 * var(--space-md)));
+}
+
+.dialog__close {
+  flex-shrink: 0;
+}
+
+/* ─── Preview modal ───────────────────────────────────────────────── */
 .preview-modal {
   background: var(--bg-secondary);
   border: 1px solid var(--border-medium);
   border-radius: var(--radius-lg);
-  width: min(92vw, 1100px);
-  height: min(88vh, 800px);
+  width: min(1100px, calc(100vw - 2 * var(--space-md)));
+  height: min(800px, calc(100dvh - 2 * var(--space-md)));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -171,7 +200,7 @@
   margin: 0;
   padding: var(--space-md);
   overflow: auto;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   line-height: 1.6;
   color: var(--text-primary);
@@ -216,23 +245,6 @@
   color: var(--text-primary);
 }
 
-/* ─── Confirm Modal ──────────────────────────────────────────────── */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeInOverlay 200ms ease;
-}
-
 @keyframes fadeInOverlay {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -243,8 +255,6 @@
   border: 1px solid var(--border-medium);
   border-radius: var(--radius-xl);
   padding: var(--space-xl);
-  max-width: 420px;
-  width: 90%;
   box-shadow: var(--shadow-lg), 0 0 40px rgba(0, 0, 0, 0.4);
   animation: modalSlideIn 250ms ease;
 }
@@ -288,31 +298,75 @@
   justify-content: flex-end;
 }
 
-
-/* ─── Código de verificación E2E ─────────────────────────────── */
-.transfer-modal__sas {
+/* ─── Connect dialog ─────────────────────────────────────────────── */
+.connect-dialog__header {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.25);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
 }
 
-.transfer-modal__sas-code {
-  margin-left: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 1.25rem;
+.connect-dialog__header .modal__title {
+  margin-bottom: var(--space-md);
+}
+
+.connect-dialog__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding-left: 1.25rem;
+  list-style: decimal;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.connect-dialog__steps li::marker {
+  color: var(--text-accent);
+  font-weight: 600;
+}
+
+.connect-dialog__steps li {
+  display: list-item;
+}
+
+.connect-dialog__step-text {
+  display: block;
+}
+
+.connect-dialog__qr {
+  display: inline-block;
+  margin-top: var(--space-sm);
+  line-height: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.connect-dialog__url {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.82rem;
+}
+
+.connect-dialog__url strong {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.connect-dialog__pin {
+  display: block;
+  margin-top: var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   letter-spacing: 0.08em;
+  line-height: 1.2;
+  color: var(--text-primary);
 }
 
-.transfer-modal__sas-confirm {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  font-size: 0.875rem;
-  cursor: pointer;
+.connect-dialog__qr + .connect-dialog__step-text {
+  margin-top: var(--space-xs);
 }

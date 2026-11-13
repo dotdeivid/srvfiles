@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef } from 'react';
+import { useId, useRef } from 'react';
+import { Dialog } from './Dialog';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -12,9 +13,8 @@ interface ConfirmModalProps {
 
 /**
  * In-app confirmation modal — replaces window.confirm().
- * Styled to match the dark theme. Focus starts on Cancelar (so a stray Enter
- * doesn't confirm a destructive action), Esc cancels, and focus goes back to
- * whatever opened the modal when it closes.
+ * Focus starts on Cancelar (so a stray Enter doesn't confirm a destructive
+ * action); Esc, clicking outside and focus return come from Dialog.
  */
 export function ConfirmModal({
   isOpen,
@@ -28,35 +28,17 @@ export function ConfirmModal({
   const titleId = useId();
   const messageId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
-  // onCancel suele ser una función inline: guardarla en un ref evita que el
-  // efecto se reinicie (y mueva el foco) en cada render del padre.
-  const onCancelRef = useRef(onCancel);
-  onCancelRef.current = onCancel;
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const opener = document.activeElement as HTMLElement | null;
-    cancelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancelRef.current(); };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      opener?.focus?.();
-    };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onCancel} id="confirm-modal">
-      <div
-        className="modal"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={messageId}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog
+      open={isOpen}
+      onClose={onCancel}
+      role="alertdialog"
+      labelledBy={titleId}
+      describedBy={messageId}
+      initialFocusRef={cancelRef}
+    >
+      <div className="modal" id="confirm-modal">
         <div className="modal__header">
           <h3 className="modal__title" id={titleId}>{title}</h3>
         </div>
@@ -76,6 +58,6 @@ export function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

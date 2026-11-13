@@ -43,8 +43,29 @@
 .header__right {
   grid-area: right;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
+  gap: var(--space-md);
+}
+
+.header__connect {
+  white-space: nowrap;
+}
+
+/* Estado de la conexión: no es un botón, así que no lleva hover. */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.status-chip--warning {
+  color: var(--warning);
 }
 
 .header__title {
@@ -105,6 +126,10 @@
 
 /* ─── Error Banner ───────────────────────────────────────────────── */
 .error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
   padding: var(--space-md) var(--space-lg);
   background: var(--danger-bg);
   border: 1px solid rgba(248, 113, 113, 0.3);
@@ -119,3 +144,85 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+
+.error-banner__text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* ─── Sections ───────────────────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.section__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.section__title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.section__count {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* Servidor sin nadie conectado: invita a sumar un dispositivo. */
+.invite-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-glass);
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--radius-md);
+}
+
+.invite-card__text {
+  max-width: 52ch;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────── */
+.app-footer {
+  margin-top: var(--space-2xl);
+  padding: var(--space-lg) 0;
+  border-top: 1px solid var(--border-subtle);
+  text-align: center;
+}
+
+.app-footer__copyright {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.app-footer__copyright a {
+  color: var(--text-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.app-footer__copyright a:hover {
+  color: var(--text-primary);
+}
+
+@media (max-width: 600px) {
+  .invite-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

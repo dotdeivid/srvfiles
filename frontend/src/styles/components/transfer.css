@@ -31,15 +31,6 @@
    Direct Transfer — Online Clients
    ═══════════════════════════════════════════════════════════════════ */
 
-.online-clients {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: var(--space-md) var(--space-lg);
-  margin-bottom: var(--space-lg);
-  backdrop-filter: blur(12px);
-}
-
 .online-clients__list {
   display: flex;
   flex-direction: column;
@@ -77,8 +68,15 @@
   flex: 1;
   min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--space-sm);
+  column-gap: var(--space-sm);
+}
+
+.direct-row__blocked {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
 }
 
 .direct-row__name {
@@ -101,7 +99,7 @@
 .direct-row__ip {
   font-size: 0.78rem;
   color: var(--text-muted);
-  font-family: monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
 }
 
@@ -110,11 +108,6 @@
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
-}
-
-.direct-row__send:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
 }
 
 /* Progress area (replaces send button when transfer is active) */
@@ -157,20 +150,10 @@
   color: var(--text-muted);
 }
 
-.direct-row__cancel {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 0.8rem;
-  padding: 2px 5px;
-  border-radius: var(--radius-sm);
-  transition: color 0.15s;
-  line-height: 1;
-}
-
 .direct-row__cancel:hover {
   color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.3);
+  background: var(--danger-bg);
 }
 
 .direct-row__actions {
@@ -230,21 +213,6 @@
   color: var(--text-accent);
 }
 
-.server-switcher-chip__count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  background: var(--accent-primary);
-  border-radius: 8px;
-  color: #fff;
-  font-size: 0.65rem;
-  font-family: var(--font-sans);
-  font-weight: 600;
-}
-
 /* ─── Device Name Chip (header) ─────────────────────────────────── */
 
 .device-name-chip {
@@ -257,11 +225,10 @@
   border-radius: var(--radius-md);
   color: var(--text-muted);
   font-size: 0.78rem;
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   cursor: pointer;
   transition: all var(--transition-fast);
   white-space: nowrap;
-  margin-top: var(--space-xs);
 }
 
 .device-name-chip:hover {
@@ -274,36 +241,22 @@
 
 .pin-modal {
   position: relative;
+  width: min(420px, calc(100vw - 2 * var(--space-md)));
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: var(--space-lg) var(--space-xl);
   padding-top: calc(var(--space-lg) + 4px);
-  max-width: 420px;
-  width: 90vw;
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
 }
 
-.pin-modal__close {
+.pin-modal .dialog__close {
   position: absolute;
-  top: var(--space-md);
-  right: var(--space-md);
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 1rem;
-  cursor: pointer;
-  line-height: 1;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  transition: color var(--transition-fast);
-}
-
-.pin-modal__close:hover {
-  color: var(--text-primary);
+  top: var(--space-sm);
+  right: var(--space-sm);
 }
 
 .pin-modal__title {
@@ -314,10 +267,19 @@
 }
 
 .pin-modal__subtitle {
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
   margin: 0;
-  line-height: 1.4;
+  padding-right: var(--space-xl);
+  line-height: 1.45;
+}
+
+.pin-modal__host {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }
 
 
@@ -332,10 +294,11 @@
   flex: 1;
   min-width: 0;
   text-align: center;
-  font-size: 1rem;
+  font-size: 1.4rem;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   letter-spacing: 0.3em;
-  padding: 7px var(--space-md);
+  padding: 8px var(--space-md);
   background: #13131f;
   color: #fff;
   border: 1px solid var(--border-subtle);
@@ -349,11 +312,6 @@
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
 }
 
-.pin-modal__input::placeholder {
-  color: rgba(255, 255, 255, 0.2);
-  letter-spacing: 0.4em;
-}
-
 .pin-modal__row .btn {
   border-radius: var(--radius-md);
   white-space: nowrap;
@@ -363,7 +321,7 @@
 }
 
 .pin-modal__error {
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   color: var(--danger);
   margin: 0;
 }
@@ -390,27 +348,6 @@
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
-}
-
-.modal__close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 1rem;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.modal__close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
 }
 
 .server-switcher__section-label {
@@ -514,7 +451,7 @@
   font-family: var(--font-mono);
 }
 
-.server-switcher__copy-btn {
+.copy-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -529,7 +466,7 @@
   transition: all var(--transition-fast);
 }
 
-.server-switcher__copy-btn:hover {
+.copy-btn:hover {
   background: rgba(99, 102, 241, 0.15);
   border-color: var(--border-accent);
   color: var(--text-accent);
@@ -545,7 +482,7 @@
 .server-switcher__same-server {
   padding: 0 var(--space-lg);
   font-size: 0.75rem;
-  color: var(--text-warning, #f59e0b);
+  color: var(--warning);
   margin: 0;
 }
 
@@ -726,21 +663,6 @@
   padding-top: 0;
 }
 
-/* ─── Clients animated wrapper ───────────────────────────────── */
-.clients-wrap {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.35s ease;
-}
-
-.clients-wrap--open {
-  grid-template-rows: 1fr;
-}
-
-.clients-wrap__inner {
-  overflow: hidden;
-}
-
 /* ─── Name modal input ───────────────────────────────────────── */
 .name-modal__input {
   width: 100%;
@@ -757,4 +679,13 @@
 
 .name-modal__input:focus {
   border-color: var(--accent-primary);
+}
+
+/* ─── Name modal label ───────────────────────────────────────── */
+.name-modal__label {
+  display: block;
+  margin-bottom: var(--space-sm);
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
 }

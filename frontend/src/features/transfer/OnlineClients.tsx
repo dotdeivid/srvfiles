@@ -4,7 +4,7 @@ import type { ActiveTransfer } from './useTransfer';
 import { formatBytes } from '../../shared/utils/format';
 import { hostOf, serverUrlFor } from '../../shared/utils/serverUrl';
 import { formatSas } from '../../lib/e2e';
-import { FolderOpen, ArrowUp, ShieldCheck } from 'lucide-react';
+import { FolderOpen, ArrowUp, ShieldCheck, X } from 'lucide-react';
 
 interface OnlineClientsProps {
   clients: TransferClient[];
@@ -105,6 +105,11 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel, onViewS
           )}
         </span>
         <span className="direct-row__ip">{client.ip}</span>
+        {/* Visible, no solo en un tooltip: en el celular no hay hover. Una
+            transferencia en curso ya se ve en su propia fila. */}
+        {sendBlockedReason && !isOtherRow && !isThisRow && (
+          <span className="direct-row__blocked" id={`send-blocked-${client.clientId}`}>{sendBlockedReason}</span>
+        )}
       </div>
 
       {isThisRow && activeTransfer ? (
@@ -115,7 +120,14 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel, onViewS
             </span>
           ) : (
             <>
-              <div className="direct-row__bar-wrap">
+              <div
+                className="direct-row__bar-wrap"
+                role="progressbar"
+                aria-label={`Enviando a ${client.appName}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={activeTransfer.progress}
+              >
                 <div className="direct-row__bar" style={{ width: `${activeTransfer.progress}%` }} />
               </div>
               <span className="direct-row__pct">{activeTransfer.progress}%</span>
@@ -123,12 +135,12 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel, onViewS
             </>
           )}
           <button
-            className="direct-row__cancel"
+            className="btn-icon direct-row__cancel"
             onClick={onCancel}
             title="Cancelar transferencia"
             aria-label="Cancelar transferencia"
           >
-            ✕
+            <X size={16} strokeWidth={2.5} />
           </button>
         </div>
       ) : (
@@ -154,10 +166,13 @@ function DirectClientRow({ client, activeTransfer, onSendFile, onCancel, onViewS
               e.target.value = '';
             }}
           />
+          {/* aria-disabled en vez de disabled: sigue enfocable y el lector
+              anuncia el motivo (aria-describedby). */}
           <button
             className="btn btn--primary btn--sm direct-row__send"
-            onClick={() => inputRef.current?.click()}
-            disabled={sendBlockedReason !== null}
+            onClick={() => { if (sendBlockedReason === null) inputRef.current?.click(); }}
+            aria-disabled={sendBlockedReason !== null}
+            aria-describedby={sendBlockedReason && !isOtherRow ? `send-blocked-${client.clientId}` : undefined}
             title={sendBlockedReason ?? `Enviar a ${client.appName}`}
           >
             <ArrowUp size={14} strokeWidth={2.5} />

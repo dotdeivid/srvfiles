@@ -1,16 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
+import { Dialog } from './Dialog';
 
 interface NameModalProps {
   isOpen: boolean;
   defaultName: string;
   onSave: (name: string) => void;
+  onCancel: () => void;
 }
 
 /**
- * First-launch modal that asks the user for a device display name.
- * Pre-filled with a randomly generated name — user can accept it or type their own.
+ * Cambia el nombre con el que este dispositivo aparece para los demás.
+ * Pre-filled with the current name, selected so it can be replaced by typing.
  */
-export function NameModal({ isOpen, defaultName, onSave }: NameModalProps) {
+export function NameModal({ isOpen, defaultName, onSave, onCancel }: NameModalProps) {
   const [value, setValue] = useState(defaultName);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -22,49 +24,43 @@ export function NameModal({ isOpen, defaultName, onSave }: NameModalProps) {
     return () => clearTimeout(id);
   }, [isOpen, defaultName]);
 
-  if (!isOpen) return null;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(value);
   };
 
   return (
-    <div className="modal-overlay">
+    <Dialog open={isOpen} onClose={onCancel} closeOnBackdrop={false} labelledBy="name-modal-title" initialFocusRef={inputRef}>
       <div className="modal name-modal">
         <div className="modal__header">
-          <h3 className="modal__title">¿Cómo se llama este dispositivo?</h3>
+          <h3 className="modal__title" id="name-modal-title">Nombre de este dispositivo</h3>
         </div>
         <div className="modal__body">
-          <p className="modal__message">
-            Este nombre se muestra a otros dispositivos cuando usás el envío directo.
-          </p>
           <form id="name-form" onSubmit={handleSubmit}>
+            <label className="name-modal__label" htmlFor="name-modal-input">
+              Así te ven los demás dispositivos cuando les enviás un archivo.
+            </label>
             <input
               ref={inputRef}
+              id="name-modal-input"
               className="name-modal__input"
               type="text"
               value={value}
               onChange={(e) => setValue(e.target.value)}
               placeholder="Nombre del dispositivo"
               maxLength={32}
-              autoFocus
             />
           </form>
         </div>
         <div className="modal__footer">
-          <button
-            className="btn btn--ghost btn--sm"
-            type="button"
-            onClick={() => onSave('')}
-          >
-            Omitir
+          <button className="btn btn--secondary" type="button" onClick={onCancel}>
+            Cancelar
           </button>
           <button className="btn btn--primary" type="submit" form="name-form">
             Guardar
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

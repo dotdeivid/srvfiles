@@ -11,7 +11,8 @@ import { checkForUpdates } from './lib/updater';
 import { DropZone } from './features/files/DropZone';
 import { FileList } from './features/files/FileList';
 import { DiskStats } from './features/files/DiskStats';
-import { QRFooter } from './shared/components/QRFooter';
+import { AppFooter } from './shared/components/AppFooter';
+import { ConnectDialog } from './shared/components/ConnectDialog';
 import { ConfirmModal } from './shared/components/ConfirmModal';
 import { OnlineClients } from './features/transfer/OnlineClients';
 import { IncomingTransferModal } from './features/transfer/IncomingTransferModal';
@@ -20,7 +21,7 @@ import { ServerSwitcherModal } from './features/server/ServerSwitcherModal';
 import { PinDialog } from './features/auth/PinDialog';
 import { isLocalOrigin } from './shared/utils/serverUrl';
 import { log } from './lib/logger';
-import { Server, Lock, LockOpen, ChevronDown, User, WifiOff } from 'lucide-react';
+import { Server, Lock, LockOpen, ChevronDown, User, WifiOff, QrCode, AlertTriangle } from 'lucide-react';
 import type { DiscoveredServer } from './features/server/discovery.api';
 
 // ─── Root: resolves the server + splash ───────────────────────────
@@ -121,6 +122,12 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
 
   const otherClients = onlineClients.filter((c) => c.clientId !== myClientId);
 
+  // ─── Connect a device ─────────────────────────────────────────
+  // Solo el propio equipo servidor conoce su PIN (se lee desde localhost):
+  // es quien tiene que mostrar el QR. En el celular no tiene sentido.
+  const isHost = serverPin !== null;
+  const [connectOpen, setConnectOpen] = useState(false);
+
   // ─── Server switcher modal ────────────────────────────────────
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const serverClients = onlineClients.filter((c) => c.isServer && c.clientId !== myClientId);
@@ -177,6 +184,14 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
         isOpen={showNameModal || renameOpen}
         defaultName={deviceName}
         onSave={handleSaveName}
+        onCancel={() => handleSaveName('')}
+      />
+
+      <ConnectDialog
+        open={connectOpen}
+        onClose={() => setConnectOpen(false)}
+        config={config}
+        pin={serverPin}
       />
 
       <IncomingTransferModal
@@ -220,15 +235,9 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
             onClick={() => setSwitcherOpen(true)}
             title="Ver y cambiar servidor SrvFiles"
           >
-            <Server size={13} />
+            <Server size={13} aria-hidden="true" />
             <span>Servidor</span>
-            {serverPin && (
-              <>
-                <Lock size={12} style={{ opacity: 0.6 }} />
-                <span>{serverPin}</span>
-              </>
-            )}
-            <ChevronDown size={11} strokeWidth={2.5} />
+            <ChevronDown size={11} strokeWidth={2.5} aria-hidden="true" />
           </button>
 
           <button
@@ -236,21 +245,22 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
             onClick={() => setRenameOpen(true)}
             title="Cambiar nombre del dispositivo"
           >
-            <User size={12} />
+            <User size={12} aria-hidden="true" />
             <span>{deviceName}</span>
           </button>
 
           {authenticated && (
             connected ? (
               <span
-                className="device-name-chip"
+                className="status-chip"
                 title={encrypted ? 'Conexión de transferencias cifrada (dispositivo ↔ servidor)' : 'Conexión de transferencias sin cifrar'}
               >
-                {encrypted ? <Lock size={12} /> : <LockOpen size={12} />}
+                {encrypted ? <Lock size={12} aria-hidden="true" /> : <LockOpen size={12} aria-hidden="true" />}
+                <span>{encrypted ? 'Cifrado' : 'Sin cifrar'}</span>
               </span>
             ) : (
-              <span className="device-name-chip" title="Sin conexión con el servidor — reconectando…" role="status">
-                <WifiOff size={12} />
+              <span className="status-chip status-chip--warning" role="status">
+                <WifiOff size={12} aria-hidden="true" />
                 <span>Reconectando…</span>
               </span>
             )
@@ -258,6 +268,12 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
         </div>
 
         <div className="header__right">
+          {isHost && (
+            <button className="btn btn--secondary btn--sm header__connect" onClick={() => setConnectOpen(true)}>
+              <QrCode size={15} aria-hidden="true" />
+              Conectar un dispositivo
+            </button>
+          )}
           <DiskStats stats={stats} />
         </div>
       </header>
@@ -266,48 +282,75 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
         <main className="main">
           {error && (
             <div className="error-banner" id="error-banner" role="alert">
-              <span>⚠️ {error}</span>
+              <span className="error-banner__text"><AlertTriangle size={16} aria-hidden="true" /> {error}</span>
               <button className="btn btn--ghost btn--sm" onClick={() => void refresh()}>Reintentar</button>
             </div>
           )}
 
-          <DropZone
-            onUpload={upload}
-            onCancel={cancelUpload}
-            uploading={uploading}
-            uploadProgress={uploadProgress}
-            maxFileSizeMb={config?.maxFileSizeMb}
-          />
+          {/* Primero la gente de la red: es a quién se le manda. En el servidor,
+              sin nadie conectado, invita a sumar un dispositivo. */}
+          {(otherClients.length > 0 || isHost) && (
+            <section className="section" aria-labelledby="devices-title">
+              <div className="section__head">
+                <h2 className="section__title" id="devices-title">En tu red</h2>
+                {otherClients.length > 0 && <span className="section__count">{otherClients.length}</span>}
+              </div>
+              {otherClients.length > 0 ? (
+                <OnlineClients
+                  clients={onlineClients}
+                  myClientId={myClientId}
+                  activeTransfer={activeTransfer}
+                  onSendFile={sendFileTo}
+                  onCancelTransfer={cancelTransfer}
+                  onViewServer={onConnect}
+                  currentServerUrl={backendLanUrl}
+                  e2eAvailable={e2eAvailable}
+                />
+              ) : (
+                <div className="invite-card">
+                  <p className="invite-card__text">
+                    Todavía no hay otros dispositivos. Sumá un celular o una computadora para
+                    compartir archivos y enviárselos directo.
+                  </p>
+                  <button className="btn btn--primary btn--sm" onClick={() => setConnectOpen(true)}>
+                    <QrCode size={15} aria-hidden="true" />
+                    Conectar un dispositivo
+                  </button>
+                </div>
+              )}
+            </section>
+          )}
 
-          <div className={`clients-wrap ${otherClients.length > 0 ? 'clients-wrap--open' : ''}`}>
-            <div className="clients-wrap__inner">
-              <OnlineClients
-                clients={onlineClients}
-                myClientId={myClientId}
-                activeTransfer={activeTransfer}
-                onSendFile={sendFileTo}
-                onCancelTransfer={cancelTransfer}
-                onViewServer={onConnect}
-                currentServerUrl={backendLanUrl}
-                e2eAvailable={e2eAvailable}
-              />
+          <section className="section" aria-labelledby="files-title">
+            <div className="section__head">
+              <h2 className="section__title" id="files-title">Carpeta compartida</h2>
+              {!loading && <span className="section__count">{files.length}</span>}
             </div>
-          </div>
 
-          <FileList
-            files={files}
-            loading={loading}
-            onRequestDelete={setPendingDelete}
-            getLinkedUrl={getLinkedUrl}
-            getPlainDownloadUrl={getPlainDownloadUrl}
-            token={getToken(serverUrl)}
-            canDelete={true}
-            previewMaxMb={config?.previewMaxFileSizeMb}
-            isLocal={isOwnServer}
-          />
+            <DropZone
+              onUpload={upload}
+              onCancel={cancelUpload}
+              uploading={uploading}
+              uploadProgress={uploadProgress}
+              maxFileSizeMb={config?.maxFileSizeMb}
+              compact={files.length > 0}
+            />
+
+            <FileList
+              files={files}
+              loading={loading}
+              onRequestDelete={setPendingDelete}
+              getLinkedUrl={getLinkedUrl}
+              getPlainDownloadUrl={getPlainDownloadUrl}
+              token={getToken(serverUrl)}
+              canDelete={true}
+              previewMaxMb={config?.previewMaxFileSizeMb}
+              isLocal={isOwnServer}
+            />
+          </section>
         </main>
 
-        <QRFooter config={config} />
+        <AppFooter />
       </div>
     </>
   );

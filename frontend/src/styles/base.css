@@ -18,12 +18,14 @@
 
   --text-primary: #e2e8f0;
   --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-muted: #7c8799; /* ≥5:1 sobre --bg-primary */
   --text-accent: #c4b5fd;
 
   --accent-primary: #6366f1;
   --accent-secondary: #8b5cf6;
   --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+  /* Para fondos con texto blanco: el violeta claro no llega a 4.5:1. */
+  --accent-gradient-strong: linear-gradient(135deg, #4f46e5, #7c3aed);
 
   --success: #34d399;
   --warning: #fbbf24;
@@ -118,5 +120,34 @@ body::before {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(99, 102, 241, 0.5);
+}
+
+/* ─── Focus ──────────────────────────────────────────────────────── */
+/* Anillo visible solo al navegar con teclado. Los inputs que quitan el
+   outline por defecto lo recuperan con :focus-visible. */
+:where(button, a, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--text-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.45);
+  color: #fff;
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .upload-progress__fill::after {
+    display: none;
+  }
 }
 

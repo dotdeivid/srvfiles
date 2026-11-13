@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import type { FileInfo } from '../files/files.api';
 import { getFileCategory } from '../../shared/utils/fileTypeHelper';
 import { errorMessage } from '../../lib/http';
 import { X } from 'lucide-react';
+import { Dialog } from '../../shared/components/Dialog';
 
 // Each preview is loaded on demand — only when a file of that type is opened.
 const ImagePreview   = lazy(() => import('./previews/ImagePreview').then(m => ({ default: m.ImagePreview })));
@@ -21,7 +22,6 @@ interface Props {
 }
 
 export function PreviewModal({ file, getLinkedUrl, onDownload, onClose }: Props) {
-  const overlayRef = useRef<HTMLDivElement>(null);
   const category = getFileCategory(file.name);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
@@ -37,23 +37,7 @@ export function PreviewModal({ file, getLinkedUrl, onDownload, onClose }: Props)
     return () => { cancelled = true; };
   }, [file.name, category, getLinkedUrl]);
 
-  // Close on ESC
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  // Prevent body scroll while open
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (e.target === overlayRef.current) onClose();
-  };
-
+  // Esc, clic fuera, foco y bloqueo del scroll de la página: Dialog.
   const renderContent = () => {
     if (category === 'unknown') return <UnknownPreview onDownload={onDownload} />;
     if (linkError) return <div className="preview-state">{linkError}</div>;
@@ -69,8 +53,8 @@ export function PreviewModal({ file, getLinkedUrl, onDownload, onClose }: Props)
   };
 
   return (
-    <div className="preview-overlay" ref={overlayRef} onClick={handleOverlayClick}>
-      <div className="preview-modal" role="dialog" aria-modal="true" aria-label={`Vista previa de ${file.name}`}>
+    <Dialog open onClose={onClose} label={`Vista previa de ${file.name}`} className="dialog--preview">
+      <div className="preview-modal">
         <div className="preview-modal__header">
           <span className="preview-modal__title" title={file.name}>{file.name}</span>
           <button className="preview-modal__close btn-icon" onClick={onClose} title="Cerrar (ESC)" aria-label="Cerrar">
@@ -83,6 +67,6 @@ export function PreviewModal({ file, getLinkedUrl, onDownload, onClose }: Props)
           </Suspense>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
