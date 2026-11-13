@@ -181,6 +181,7 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
 
       <IncomingTransferModal
         request={incomingRequest}
+        sender={onlineClients.find((c) => c.clientId === incomingRequest?.from)}
         pending={pendingRequests}
         onAccept={acceptTransfer}
         onReject={rejectTransfer}
@@ -201,7 +202,7 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
       <ConfirmModal
         isOpen={pendingDelete !== null}
         title="Eliminar archivo"
-        message={`¿Estás seguro de que querés eliminar "${pendingDelete}"? Esta acción no se puede deshacer.`}
+        message={`"${pendingDelete}" se eliminará de la carpeta compartida para todos los dispositivos. No se puede deshacer.`}
         onConfirm={handleConfirmDelete}
         onCancel={() => setPendingDelete(null)}
       />

@@ -28,6 +28,21 @@
   transform: translateY(0);
 }
 
+.btn:focus-visible {
+  outline: 2px solid var(--text-accent);
+  outline-offset: 2px;
+}
+
+/* Rojo oscuro, no var(--danger): con texto blanco tiene que pasar 4.5:1. */
+.btn--danger {
+  background: #dc2626;
+  color: white;
+}
+
+.btn--danger:hover {
+  background: #b91c1c;
+}
+
 .btn:disabled {
   background: rgba(99, 102, 241, 0.15);
   color: var(--text-muted);
