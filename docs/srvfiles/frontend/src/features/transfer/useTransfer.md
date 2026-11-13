@@ -13,7 +13,7 @@
 
 ## Recepción
 
-1. Al llegar `send-request` deriva la sesión, manda `send-key` de inmediato y encola la solicitud (`PendingRequest` con `sas`). Si ya hay una transferencia → `busy`; sin respuesta en 60 s → `timeout`; sin contexto seguro → `e2e-unavailable`.
+1. Al llegar `send-request` deriva la sesión, manda `send-key` de inmediato y encola la solicitud (`PendingRequest` con `sas` y `expiresAt`). Si ya hay una transferencia → `busy`; sin respuesta en `REQUEST_TIMEOUT_MS` (60 s, exportado para la cuenta regresiva del diálogo) → `timeout`; sin contexto seguro → `e2e-unavailable`.
 2. `accept(id)` crea el destino (`createReceiveSink`, debe ser desde el clic) y manda `send-accept`.
 3. Los chunks se descifran en orden (cadena de promesas, `nextIndex`) y se escriben a medida que llegan.
 4. `send-complete`: descifra el marcador final y comprueba cantidad de chunks, tamaño (recibido = anunciado) y nombre; si no coincide descarta el archivo.
