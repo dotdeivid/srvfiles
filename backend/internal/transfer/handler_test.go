@@ -181,6 +181,23 @@ func TestAuthIsRequired(t *testing.T) {
 	}
 }
 
+func TestCloseAllTellsClientsTheServerStopped(t *testing.T) {
+	url := newRelay(t)
+	p := join(t, url, "Navegador", true)
+	Default.CloseAll(ServerStoppedCode, "Servidor detenido")
+	timeout := time.After(3 * time.Second)
+	for open := true; open; {
+		select {
+		case _, open = <-p.msgs:
+		case <-timeout:
+			t.Fatal("connection was not closed")
+		}
+	}
+	if ce, ok := p.closeErr.(*websocket.CloseError); !ok || ce.Code != ServerStoppedCode {
+		t.Fatalf("want close %d, got %v", ServerStoppedCode, p.closeErr)
+	}
+}
+
 func TestChunksOnlyFromSenderAfterAcceptAndCancelOnDisconnect(t *testing.T) {
 	url := newRelay(t)
 	sender := join(t, url, "Emisor", true) // con cifrado: el relay descifra y re-cifra

@@ -106,6 +106,10 @@ func main() {
 	logger.Log.Info("main.go", "Servers shutting down")
 	stopAnnounce()
 	auth.ResetAuth()
+	// http.Server.Shutdown no toca los WebSocket (conexiones secuestradas):
+	// se cierran acá con un código que el navegador muestra como "servidor
+	// detenido" en lugar de quedarse reconectando.
+	transfer.Default.CloseAll(transfer.ServerStoppedCode, "Servidor detenido")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -17,4 +17,4 @@
 
 ## `Registry`
 
-Mapas protegidos por `RWMutex`. `AddTransfer` falla si el id existe; `MarkKeySent` y `AcceptTransfer` validan que quien llama sea el receptor; `TakeTransfersOf` saca las transferencias de un cliente al desconectarse. `BroadcastClients` (lista ordenada, incluye `e2e` y `serverPort`) y `BroadcastFilesChanged`.
+Mapas protegidos por `RWMutex`. `AddTransfer` falla si el id existe; `MarkKeySent` y `AcceptTransfer` validan que quien llama sea el receptor; `TakeTransfersOf` saca las transferencias de un cliente al desconectarse. `CloseAll(code, reason)` cierra todas las conexiones (al apagar, con `ServerStoppedCode` = 4410). `BroadcastClients` (lista ordenada, incluye `e2e` y `serverPort`) y `BroadcastFilesChanged`.

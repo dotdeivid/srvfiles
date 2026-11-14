@@ -321,6 +321,17 @@ func (r *Registry) TakeTransfersOf(clientID string) []TransferSession {
 	return out
 }
 
+// ServerStoppedCode es el código de cierre con que se avisa que el servidor
+// se detuvo a propósito: el cliente deja de reconectar y lo muestra.
+const ServerStoppedCode = 4410
+
+// CloseAll cierra todas las conexiones con code (al apagar el servidor).
+func (r *Registry) CloseAll(code int, reason string) {
+	for _, c := range r.all() {
+		c.closeWithCode(code, reason)
+	}
+}
+
 // ─── Broadcasts ───────────────────────────────────────────────────────────────
 
 func (r *Registry) all() []*Client {

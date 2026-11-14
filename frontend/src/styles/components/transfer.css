@@ -27,6 +27,39 @@
   letter-spacing: 0.02em;
 }
 
+/* ─── Server stopped (reusa .connecting-screen) ──────────────── */
+.server-stopped {
+  gap: var(--space-md);
+  padding: var(--space-xl) var(--space-md);
+  text-align: center;
+}
+
+.server-stopped__icon {
+  color: var(--text-muted);
+}
+
+.server-stopped__title {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.server-stopped__text {
+  max-width: 38ch;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.server-stopped__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    Direct Transfer — Online Clients
    ═══════════════════════════════════════════════════════════════════ */

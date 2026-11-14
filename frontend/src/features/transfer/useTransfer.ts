@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
-  TransferConnection, CancelToken, TransferAbortedError,
+  TransferConnection, CancelToken, TransferAbortedError, SERVER_STOPPED_CLOSE_CODE,
   type TransferClient, type IncomingTransferRequest,
 } from './transfer.api';
 import { getToken } from '../auth/auth.service';
@@ -100,7 +100,8 @@ const rejectMessage = (reason?: string) => {
  *   propia clave entre emisor y receptor (lib/e2e.ts). El receptor solo puede
  *   aceptar confirmando que el código de verificación coincide con el que ve
  *   el emisor.
- * - Reconecta solo con backoff si la conexión se pierde.
+ * - Reconecta solo con backoff si la conexión se pierde, salvo que el servidor
+ *   avise que se apagó (cierre 4410): entonces expone `serverStopped`.
  * - Las solicitudes entrantes se encolan (de a una en pantalla); si ya hay
  *   una transferencia en curso se rechazan con "busy".
  * - Lo recibido se descifra y escribe a disco a medida que llega; al final se
@@ -120,6 +121,8 @@ export function useTransfer({
   useEffect(() => { callbacks.current = { onFilesChanged, onReconnected, appName, isServer, serverPort }; });
 
   const [connected, setConnected] = useState(false);
+  // Servidor que avisó que se apagó (por URL: al cambiar de servidor deja de valer solo).
+  const [stoppedServerUrl, setStoppedServerUrl] = useState<string | null>(null);
   const [encrypted, setEncrypted] = useState(false);
   const [myClientId, setMyClientId] = useState<string | null>(null);
   const [onlineClients, setOnlineClients] = useState<TransferClient[]>([]);
@@ -395,6 +398,12 @@ export function useTransfer({
         }
         for (const id of [...timers.keys()]) dropRequest(id);
         if (disposed || e.code === 4401) return; // 4401: el token dejó de valer (pide PIN)
+        if (e.code === SERVER_STOPPED_CLOSE_CODE) {
+          // Lo apagaron a propósito: reconectar no tiene sentido.
+          void log.info('[useTransfer] server stopped');
+          setStoppedServerUrl(serverUrl);
+          return;
+        }
         const delay = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
         attempt++;
         void log.info('[useTransfer] WS closed — reconnecting', { code: e.code, delay });
@@ -511,6 +520,8 @@ export function useTransfer({
 
   return {
     connected,
+    /** El servidor avisó que se apagó: no se reconecta. */
+    serverStopped: stoppedServerUrl === serverUrl,
     encrypted,
     /** false si el navegador no permite cifrado (página abierta por HTTP). */
     e2eAvailable: isE2EAvailable(),

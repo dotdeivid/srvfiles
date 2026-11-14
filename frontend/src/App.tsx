@@ -21,7 +21,7 @@ import { ServerSwitcherModal } from './features/server/ServerSwitcherModal';
 import { PinDialog } from './features/auth/PinDialog';
 import { isLocalOrigin } from './shared/utils/serverUrl';
 import { log } from './lib/logger';
-import { Server, Lock, LockOpen, ChevronDown, User, WifiOff, QrCode, AlertTriangle } from 'lucide-react';
+import { Server, Lock, LockOpen, ChevronDown, User, WifiOff, QrCode, AlertTriangle, PowerOff } from 'lucide-react';
 import type { DiscoveredServer } from './features/server/discovery.api';
 
 // ─── Root: resolves the server + splash ───────────────────────────
@@ -51,6 +51,37 @@ function ConnectingScreen() {
       <div className="connecting-screen__spinner" />
       <p className="connecting-screen__text">Conectando con el servidor...</p>
     </div>
+  );
+}
+
+/**
+ * El servidor avisó que se apagó (por ejemplo, el celular dejó de compartir).
+ * Una pestaña abierta por el usuario no se puede cerrar desde la página, así
+ * que se reemplaza todo por este aviso en lugar de dejar la lista vieja.
+ */
+function ServerStoppedScreen({ onGoBack }: { onGoBack?: () => boolean }) {
+  return (
+    <main className="connecting-screen server-stopped" role="alert">
+      <PowerOff className="server-stopped__icon" size={36} aria-hidden="true" />
+      <h1 className="server-stopped__title">El servidor se detuvo</h1>
+      <p className="server-stopped__text">
+        El dispositivo que compartía la carpeta dejó de hacerlo. Ya podés cerrar esta
+        pestaña, o reintentar cuando vuelva a estar activo.
+      </p>
+      <div className="server-stopped__actions">
+        {onGoBack && (
+          <button className="btn btn--primary" onClick={() => { onGoBack(); }}>
+            Volver al servidor anterior
+          </button>
+        )}
+        <button
+          className={`btn ${onGoBack ? 'btn--secondary' : 'btn--primary'}`}
+          onClick={() => window.location.reload()}
+        >
+          Reintentar
+        </button>
+      </div>
+    </main>
   );
 }
 
@@ -99,7 +130,7 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
   // ─── Direct transfer ──────────────────────────────────────────
   const isOwnServer = isTauriApp() && localUrl !== null && serverUrl === localUrl;
   const {
-    connected, encrypted, e2eAvailable, myClientId, onlineClients, incomingRequest, pendingRequests, activeTransfer,
+    connected, serverStopped, encrypted, e2eAvailable, myClientId, onlineClients, incomingRequest, pendingRequests, activeTransfer,
     sendFileTo, acceptTransfer, rejectTransfer, cancelTransfer, rename,
   } = useTransfer({
     serverUrl,
@@ -164,6 +195,8 @@ function FileApp({ serverUrl, localUrl, onConnect, onGoBack, onRescan }: FileApp
   useEffect(() => {
     if (isLocalOrigin(serverUrl) && config?.lanIp) setLocalLanIp(config.lanIp);
   }, [serverUrl, config?.lanIp]);
+
+  if (serverStopped) return <ServerStoppedScreen onGoBack={onGoBack} />;
 
   return (
     <>

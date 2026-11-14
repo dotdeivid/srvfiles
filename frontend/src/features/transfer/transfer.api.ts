@@ -49,6 +49,8 @@ type MessageType = ServerMessage['type'];
 const CHUNK_SIZE = 256 * 1024;
 const TRANSFER_ID_LENGTH = 36;
 const KEY_EXCHANGE_TIMEOUT_MS = 5_000;
+/** Cierre del WebSocket cuando el servidor se apaga a propósito (no reconectar). */
+export const SERVER_STOPPED_CLOSE_CODE = 4410;
 /** Por encima de esto se espera a que el socket vacíe su buffer (contrapresión). */
 const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 
