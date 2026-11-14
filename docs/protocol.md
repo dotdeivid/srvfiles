@@ -19,6 +19,7 @@ Límites del servidor Go: mensajes de hasta ~260 KB, 100 clientes, nombre de dis
 
 1. **Cliente → `auth`** `{ "type": "auth", "token": "<token de POST /api/auth>" }`
    - Token inválido → el servidor cierra con código **4401** (el cliente debe pedir el PIN).
+   - Al apagarse a propósito (el servidor Go al terminar, el celular al dejar de compartir) el servidor cierra todas las conexiones con código **4410** ("Servidor detenido"): el cliente no reconecta y muestra que el servidor se detuvo.
    - El relay móvil sin modo servidor manda `auth_ok` apenas se conecta; si después recibe `auth` no lo repite. El cliente ignora `auth_ok` duplicados.
 2. **Servidor → `auth_ok`**.
 3. **Cifrado del canal (opcional)** — si el cliente tiene WebCrypto/criptografía disponible:

@@ -28,4 +28,6 @@ Pasa `e2eAvailable` a `OnlineClients` (sin contexto seguro no se puede enviar) y
 1. **En tu red:** los otros dispositivos (`OnlineClients`). En el servidor, sin nadie conectado, una tarjeta invita a sumar uno (`ConnectDialog`). En un cliente sin otros dispositivos la sección no aparece.
 2. **Carpeta compartida (N):** `DropZone` (compacta cuando ya hay archivos) y `FileList`.
 
+Si `useTransfer` informa `serverStopped`, `FileApp` reemplaza toda la página por `ServerStoppedScreen` ("El servidor se detuvo", con "Reintentar" que recarga y, si hay historial, "Volver al servidor anterior"): una pestaña abierta por el usuario no se puede cerrar desde la página.
+
 El header muestra el servidor, el nombre del dispositivo, el estado de la conexión con texto ("Cifrado", "Reconectando…") y, en el servidor, el botón "Conectar un dispositivo".

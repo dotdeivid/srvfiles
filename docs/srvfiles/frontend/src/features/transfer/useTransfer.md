@@ -18,4 +18,4 @@
 3. Los chunks se descifran en orden (cadena de promesas, `nextIndex`) y se escriben a medida que llegan.
 4. `send-complete`: descifra el marcador final y comprueba cantidad de chunks, tamaño (recibido = anunciado) y nombre; si no coincide descarta el archivo.
 
-Además: reconexión con backoff, `rejectMessage` traduce los motivos de rechazo, `files-changed` → `onFilesChanged`. Devuelve `onlineClients`, `myClientId`, `activeTransfer`, `requests`, `e2eAvailable` y las acciones.
+Además: reconexión con backoff (salvo cierre 4410 = el servidor se apagó: no reconecta y devuelve `serverStopped: true`, ligado a la URL del servidor), `rejectMessage` traduce los motivos de rechazo, `files-changed` → `onFilesChanged`. Devuelve `onlineClients`, `myClientId`, `activeTransfer`, `requests`, `e2eAvailable` y las acciones.
